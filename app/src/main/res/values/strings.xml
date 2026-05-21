@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Expensey</string>
+    <string name="error_request_timeout">Request timeout হয়েছে। আবার চেষ্টা করুন।</string>
+    <string name="error_too_many_requests">অনেক বেশি request। একটু পরে চেষ্টা করুন।</string>
+    <string name="error_no_internet">Internet connection নেই।</string>
+    <string name="error_serialization">Data processing এ সমস্যা হয়েছে।</string>
+    <string name="error_unknown">কিছু একটা সমস্যা হয়েছে।</string>
+</resources>
