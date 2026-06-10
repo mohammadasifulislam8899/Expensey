@@ -47,6 +47,7 @@ class AccountDetailViewModel(
                     val msg = when (val err = result.error) {
                         is com.xentoryx.expensey.core.domain.util.DataError.Api -> err.message
                         is com.xentoryx.expensey.core.domain.util.DataError.Network -> "Network error"
+                        is com.xentoryx.expensey.core.domain.util.DataError.EmailNotVerified -> "Email not verified"
                     }
                     onError(msg)
                 }

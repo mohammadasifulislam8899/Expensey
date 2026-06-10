@@ -7,5 +7,6 @@ fun DataError.toUserMessage(context: Context): String {
     return when (this) {
         is DataError.Api -> message
         is DataError.Network -> error.toUserMessage(context)
+        is DataError.EmailNotVerified -> "Please verify your email before logging in"
     }
 }

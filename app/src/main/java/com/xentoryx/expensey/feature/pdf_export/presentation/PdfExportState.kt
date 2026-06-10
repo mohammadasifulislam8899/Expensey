@@ -5,6 +5,8 @@ data class PdfExportState(
     val endDateMillis: Long? = null,
     val isLoading: Boolean = false,
     val pdfBytes: ByteArray? = null,
+    val csvBytes: ByteArray? = null,
+    val exportFormat: String = "PDF", // "PDF" or "CSV"
     val error: String? = null,
     val loadingMessage: String = "Preparing data..."
 )

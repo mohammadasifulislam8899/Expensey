@@ -1,5 +1,6 @@
 package com.xentoryx.expensey.feature.transaction.presentation.list
 
+import android.app.DatePickerDialog
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -7,13 +8,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,10 +30,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xentoryx.expensey.feature.dashboard.domain.model.Transaction
+import com.xentoryx.expensey.feature.transaction.domain.model.TransactionFilter
+import java.time.LocalDate
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -96,6 +106,276 @@ fun TransactionsListScreen(
                         contentDescription = "Export PDF Report",
                         tint = MaterialTheme.colorScheme.primary
                     )
+                }
+            }
+
+            // Search & Filter Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                TextField(
+                    value = state.filter.searchQuery,
+                    onValueChange = { viewModel.updateSearchQuery(it) },
+                    placeholder = { Text("Search transactions...", fontSize = 14.sp) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    trailingIcon = {
+                        if (state.filter.searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear search",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+                )
+
+                var showFilterDialog by remember { mutableStateOf(false) }
+
+                IconButton(
+                    onClick = { showFilterDialog = true },
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = if (state.filter != TransactionFilter(searchQuery = state.filter.searchQuery))
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        else
+                            MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (state.filter != TransactionFilter(searchQuery = state.filter.searchQuery))
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    modifier = Modifier
+                        .size(48.dp)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FilterList,
+                        contentDescription = "Advanced Filter"
+                    )
+                }
+
+                if (showFilterDialog) {
+                    var showStartDatePicker by remember { mutableStateOf(false) }
+                    var showEndDatePicker by remember { mutableStateOf(false) }
+
+                    AlertDialog(
+                        onDismissRequest = { showFilterDialog = false },
+                        title = { Text("Advanced Filter", fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column(
+                                modifier = Modifier.verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                // Dates
+                                Column {
+                                    Text("Date Range", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(
+                                            onClick = { showStartDatePicker = true },
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(state.filter.startDate?.toString() ?: "Start Date", fontSize = 12.sp)
+                                        }
+                                        OutlinedButton(
+                                            onClick = { showEndDatePicker = true },
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(state.filter.endDate?.toString() ?: "End Date", fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+
+                                // Min / Max Amount
+                                Column {
+                                    Text("Amount Range", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        var minAmountText by remember { mutableStateOf(state.filter.minAmount?.toString() ?: "") }
+                                        var maxAmountText by remember { mutableStateOf(state.filter.maxAmount?.toString() ?: "") }
+
+                                        OutlinedTextField(
+                                            value = minAmountText,
+                                            onValueChange = {
+                                                minAmountText = it
+                                                val amt = it.toDoubleOrNull()
+                                                viewModel.updateFilter(state.filter.copy(minAmount = amt))
+                                            },
+                                            placeholder = { Text("Min") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        OutlinedTextField(
+                                            value = maxAmountText,
+                                            onValueChange = {
+                                                maxAmountText = it
+                                                val amt = it.toDoubleOrNull()
+                                                viewModel.updateFilter(state.filter.copy(maxAmount = amt))
+                                            },
+                                            placeholder = { Text("Max") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+
+                                // Accounts checkboxes
+                                if (state.accounts.isNotEmpty()) {
+                                    Column {
+                                        Text("Filter by Accounts", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        state.accounts.forEach { account ->
+                                            val isSelected = state.filter.selectedAccounts.contains(account.accountId)
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable {
+                                                        val newSet = if (isSelected) {
+                                                            state.filter.selectedAccounts - account.accountId
+                                                        } else {
+                                                            state.filter.selectedAccounts + account.accountId
+                                                        }
+                                                        viewModel.updateFilter(state.filter.copy(selectedAccounts = newSet))
+                                                    }
+                                                    .padding(vertical = 4.dp)
+                                            ) {
+                                                Checkbox(
+                                                    checked = isSelected,
+                                                    onCheckedChange = {
+                                                        val newSet = if (isSelected) {
+                                                            state.filter.selectedAccounts - account.accountId
+                                                        } else {
+                                                            state.filter.selectedAccounts + account.accountId
+                                                        }
+                                                        viewModel.updateFilter(state.filter.copy(selectedAccounts = newSet))
+                                                    }
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(account.accountName, fontSize = 14.sp)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Categories checkboxes
+                                if (state.categories.isNotEmpty()) {
+                                    Column {
+                                        Text("Filter by Categories", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        state.categories.forEach { category ->
+                                            val isSelected = state.filter.selectedCategories.contains(category.categoryId)
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable {
+                                                        val newSet = if (isSelected) {
+                                                            state.filter.selectedCategories - category.categoryId
+                                                        } else {
+                                                            state.filter.selectedCategories + category.categoryId
+                                                        }
+                                                        viewModel.updateFilter(state.filter.copy(selectedCategories = newSet))
+                                                    }
+                                                    .padding(vertical = 4.dp)
+                                            ) {
+                                                Checkbox(
+                                                    checked = isSelected,
+                                                    onCheckedChange = {
+                                                        val newSet = if (isSelected) {
+                                                            state.filter.selectedCategories - category.categoryId
+                                                        } else {
+                                                            state.filter.selectedCategories + category.categoryId
+                                                        }
+                                                        viewModel.updateFilter(state.filter.copy(selectedCategories = newSet))
+                                                    }
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(category.categoryName, fontSize = 14.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Button(onClick = { showFilterDialog = false }) {
+                                Text("Apply")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    viewModel.clearFilter()
+                                    showFilterDialog = false
+                                }
+                            ) {
+                                Text("Clear All")
+                            }
+                        }
+                    )
+
+                    if (showStartDatePicker) {
+                        val date = state.filter.startDate ?: LocalDate.now()
+                        DatePickerDialog(
+                            context,
+                            { _, year, monthOfYear, dayOfMonth ->
+                                val selectedDate = LocalDate.of(year, monthOfYear + 1, dayOfMonth)
+                                viewModel.updateFilter(state.filter.copy(startDate = selectedDate))
+                                showStartDatePicker = false
+                            },
+                            date.year,
+                            date.monthValue - 1,
+                            date.dayOfMonth
+                        ).apply {
+                            setOnDismissListener { showStartDatePicker = false }
+                            show()
+                        }
+                    }
+
+                    if (showEndDatePicker) {
+                        val date = state.filter.endDate ?: LocalDate.now()
+                        DatePickerDialog(
+                            context,
+                            { _, year, monthOfYear, dayOfMonth ->
+                                val selectedDate = LocalDate.of(year, monthOfYear + 1, dayOfMonth)
+                                viewModel.updateFilter(state.filter.copy(endDate = selectedDate))
+                                showEndDatePicker = false
+                            },
+                            date.year,
+                            date.monthValue - 1,
+                            date.dayOfMonth
+                        ).apply {
+                            setOnDismissListener { showEndDatePicker = false }
+                            show()
+                        }
+                    }
                 }
             }
 

@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -20,6 +21,7 @@ class TokenManager(private val context: Context) {
         private val USER_ID_KEY = stringPreferencesKey("user_id")
         private val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
         private val DASHBOARD_CACHE_KEY = stringPreferencesKey("dashboard_cache")
+        private val BIOMETRIC_ENABLED_KEY = booleanPreferencesKey("biometric_enabled")
     }
 
     suspend fun saveTokens(accessToken: String, refreshToken: String) {
@@ -66,6 +68,16 @@ class TokenManager(private val context: Context) {
 
     suspend fun getDashboardCache(): String? =
         context.dataStore.data.first()[DASHBOARD_CACHE_KEY]
+
+    suspend fun saveBiometricEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[BIOMETRIC_ENABLED_KEY] = enabled
+        }
+    }
+
+    val biometricEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[BIOMETRIC_ENABLED_KEY] ?: false
+    }
 
     suspend fun clearAll() {
         context.dataStore.edit { it.clear() }

@@ -26,6 +26,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import coil.compose.AsyncImage
+import com.xentoryx.expensey.core.data.database.entity.AttachmentEntity
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -412,6 +416,89 @@ fun AddTransactionScreen(
                 }
             }
 
+            // 3.5. Attachments Card
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    val fileLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.GetContent()
+                    ) { uri ->
+                        if (uri != null) {
+                            viewModel.addAttachment(context, uri)
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Attachments & Receipts",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Button(
+                            onClick = { fileLauncher.launch("*/*") },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text("Add File", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    val allAttachmentsCount = state.savedAttachments.size + state.tempAttachments.size
+                    if (allAttachmentsCount == 0) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(60.dp)
+                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "No attachments added yet.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp
+                            )
+                        }
+                    } else {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Saved attachments
+                            state.savedAttachments.forEach { attachment ->
+                                AttachmentRow(
+                                    fileName = attachment.fileName,
+                                    fileType = attachment.fileType,
+                                    localFilePath = attachment.localFilePath,
+                                    onDelete = { viewModel.deleteAttachment(attachment.id) }
+                                )
+                            }
+                            // Temp attachments
+                            state.tempAttachments.forEach { temp ->
+                                AttachmentRow(
+                                    fileName = temp.fileName,
+                                    fileType = temp.fileType,
+                                    localFilePath = temp.localFilePath,
+                                    onDelete = { viewModel.deleteTempAttachment(temp) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // 4. Save Button
             Button(
                 onClick = { viewModel.saveTransaction() },
@@ -430,6 +517,104 @@ fun AddTransactionScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+fun AttachmentRow(
+    fileName: String,
+    fileType: String,
+    localFilePath: String,
+    onDelete: () -> Unit
+) {
+    val context = LocalContext.current
+    val isImage = fileType.startsWith("image/")
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+            .clickable {
+                try {
+                    val file = java.io.File(localFilePath)
+                    val authority = "${context.packageName}.fileprovider"
+                    val uri = androidx.core.content.FileProvider.getUriForFile(context, authority, file)
+                    
+                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, fileType)
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(android.content.Intent.createChooser(intent, "Open attachment"))
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Cannot open file: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .padding(10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            if (isImage) {
+                val file = java.io.File(localFilePath)
+                if (file.exists()) {
+                    AsyncImage(
+                        model = file,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.LightGray),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                } else {
+                    Box(modifier = Modifier.size(40.dp).background(Color.LightGray, RoundedCornerShape(6.dp)))
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(6.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = fileName.substringAfterLast('.').uppercase().take(3),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = fileName,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                Text(
+                    text = fileType,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
+            Icon(
+                imageVector = Icons.Default.Delete,
+                contentDescription = "Remove attachment",
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }

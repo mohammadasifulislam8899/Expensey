@@ -5,4 +5,5 @@ import com.xentoryx.expensey.core.domain.util.Result
 
 interface ExportRepository {
     suspend fun getPdfReport(from: String, to: String): Result<ByteArray, DataError>
+    suspend fun getCsvReport(from: String, to: String): Result<ByteArray, DataError>
 }

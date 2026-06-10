@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xentoryx.expensey.core.domain.util.Result
 import com.xentoryx.expensey.feature.pdf_export.domain.usecase.ExportPdfReportUseCase
+import com.xentoryx.expensey.feature.pdf_export.domain.usecase.ExportCsvReportUseCase
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,11 +16,23 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 class PdfExportViewModel(
-    private val exportPdfReportUseCase: ExportPdfReportUseCase
+    private val exportPdfReportUseCase: ExportPdfReportUseCase,
+    private val exportCsvReportUseCase: ExportCsvReportUseCase
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PdfExportState())
     val state = _state.asStateFlow()
+
+    fun selectExportFormat(format: String) {
+        _state.update {
+            it.copy(
+                exportFormat = format,
+                pdfBytes = null,
+                csvBytes = null,
+                error = null
+            )
+        }
+    }
 
     private var loadingMessageJob: Job? = null
 
@@ -38,13 +51,14 @@ class PdfExportViewModel(
                 startDateMillis = start,
                 endDateMillis = end,
                 pdfBytes = null,
+                csvBytes = null,
                 error = null
             )
         }
     }
 
     fun clearPdf() {
-        _state.update { it.copy(pdfBytes = null, error = null) }
+        _state.update { it.copy(pdfBytes = null, csvBytes = null, error = null) }
     }
 
     fun clearError() {
@@ -71,11 +85,14 @@ class PdfExportViewModel(
         val fromStr = startLocalDate.format(formatter)
         val toStr = endLocalDate.format(formatter)
 
+        val isCsv = _state.value.exportFormat == "CSV"
+
         _state.update {
             it.copy(
                 isLoading = true,
                 error = null,
                 pdfBytes = null,
+                csvBytes = null,
                 loadingMessage = loadingMessages.first()
             )
         }
@@ -92,23 +109,36 @@ class PdfExportViewModel(
         }
 
         viewModelScope.launch {
-            val result = exportPdfReportUseCase(fromStr, toStr)
+            val result = if (isCsv) {
+                exportCsvReportUseCase(fromStr, toStr)
+            } else {
+                exportPdfReportUseCase(fromStr, toStr)
+            }
             loadingMessageJob?.cancel()
             
             _state.update {
                 when (result) {
                     is Result.Success -> {
-                        it.copy(
-                            isLoading = false,
-                            pdfBytes = result.data,
-                            error = null
-                        )
+                        if (isCsv) {
+                            it.copy(
+                                isLoading = false,
+                                csvBytes = result.data,
+                                error = null
+                            )
+                        } else {
+                            it.copy(
+                                isLoading = false,
+                                pdfBytes = result.data,
+                                error = null
+                            )
+                        }
                     }
                     is Result.Error -> {
                         it.copy(
                             isLoading = false,
                             pdfBytes = null,
-                            error = "Failed to export PDF: ${result.error}"
+                            csvBytes = null,
+                            error = "Failed to export ${if (isCsv) "CSV" else "PDF"}: ${result.error}"
                         )
                     }
                 }

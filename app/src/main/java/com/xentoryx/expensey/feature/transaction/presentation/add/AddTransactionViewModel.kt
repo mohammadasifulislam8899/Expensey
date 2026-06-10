@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xentoryx.expensey.core.data.database.dao.AccountDao
 import com.xentoryx.expensey.core.data.database.dao.CategoryDao
+import com.xentoryx.expensey.core.data.database.dao.AttachmentDao
+import com.xentoryx.expensey.core.data.database.entity.AttachmentEntity
 import com.xentoryx.expensey.core.domain.util.Result
 import com.xentoryx.expensey.feature.dashboard.data.mapper.toDomain
 import com.xentoryx.expensey.feature.dashboard.domain.model.CategoryBreakdown
@@ -12,12 +14,18 @@ import com.xentoryx.expensey.feature.transaction.domain.usecase.UpdateTransactio
 import com.xentoryx.expensey.feature.transaction.domain.usecase.DeleteTransactionUseCase
 import com.xentoryx.expensey.feature.transaction.domain.repository.TransactionRepository
 import com.xentoryx.expensey.core.domain.util.DataError
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.Instant
+import java.io.File
+import java.util.UUID
+import android.content.Context
+import android.net.Uri
 
 class AddTransactionViewModel(
     private val createTransactionUseCase: CreateTransactionUseCase,
@@ -25,7 +33,8 @@ class AddTransactionViewModel(
     private val deleteTransactionUseCase: DeleteTransactionUseCase,
     private val transactionRepository: TransactionRepository,
     private val accountDao: AccountDao,
-    private val categoryDao: CategoryDao
+    private val categoryDao: CategoryDao,
+    private val attachmentDao: AttachmentDao
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -92,8 +101,106 @@ class AddTransactionViewModel(
                     )
                 }
                 loadAccountsAndCategories()
+                loadAttachments(tx.id)
             } else {
                 _state.update { it.copy(isLoading = false, errorMessage = "Failed to load transaction") }
+            }
+        }
+    }
+
+    private fun loadAttachments(transactionId: String) {
+        viewModelScope.launch {
+            try {
+                val list = attachmentDao.getAttachmentsForTransaction(transactionId)
+                _state.update { it.copy(savedAttachments = list) }
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
+
+    fun addAttachment(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val contentResolver = context.contentResolver
+                val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+                val extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: "bin"
+                
+                var fileName = "attachment_${System.currentTimeMillis()}.$extension"
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex != -1 && cursor.moveToFirst()) {
+                        fileName = cursor.getString(nameIndex)
+                    }
+                }
+
+                val attachmentsDir = File(context.filesDir, "attachments").apply { mkdirs() }
+                val destFile = File(attachmentsDir, "file_${UUID.randomUUID()}_$fileName")
+                
+                contentResolver.openInputStream(uri)?.use { input ->
+                    destFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                val txId = _state.value.transactionId
+                if (txId != null) {
+                    val attachment = AttachmentEntity(
+                        id = UUID.randomUUID().toString(),
+                        transactionId = txId,
+                        localFilePath = destFile.absolutePath,
+                        fileName = fileName,
+                        fileType = mimeType,
+                        createdAt = Instant.now().toString()
+                    )
+                    attachmentDao.insertAttachment(attachment)
+                    loadAttachments(txId)
+                } else {
+                    val temp = TempAttachment(
+                        localFilePath = destFile.absolutePath,
+                        fileName = fileName,
+                        fileType = mimeType
+                    )
+                    _state.update {
+                        it.copy(tempAttachments = it.tempAttachments + temp)
+                    }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = "Failed to add attachment: ${e.message}") }
+            }
+        }
+    }
+
+    fun deleteAttachment(attachmentId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val attachment = attachmentDao.getAttachmentById(attachmentId)
+                if (attachment != null) {
+                    val file = File(attachment.localFilePath)
+                    if (file.exists()) {
+                        file.delete()
+                    }
+                    attachmentDao.deleteAttachmentById(attachmentId)
+                    _state.value.transactionId?.let { loadAttachments(it) }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = "Failed to delete attachment: ${e.message}") }
+            }
+        }
+    }
+
+    fun deleteTempAttachment(temp: TempAttachment) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val file = File(temp.localFilePath)
+                if (file.exists()) {
+                    file.delete()
+                }
+                _state.update {
+                    it.copy(tempAttachments = it.tempAttachments - temp)
+                }
+            } catch (e: Exception) {
+                // ignore
             }
         }
     }
@@ -177,12 +284,27 @@ class AddTransactionViewModel(
 
             when (result) {
                 is Result.Success -> {
-                    _state.update { it.copy(isLoading = false, isSuccess = true) }
+                    if (currentState.transactionId == null) {
+                        val newTxId = result.data.id
+                        currentState.tempAttachments.forEach { temp ->
+                            val attachment = AttachmentEntity(
+                                id = UUID.randomUUID().toString(),
+                                transactionId = newTxId,
+                                localFilePath = temp.localFilePath,
+                                fileName = temp.fileName,
+                                fileType = temp.fileType,
+                                createdAt = Instant.now().toString()
+                            )
+                            attachmentDao.insertAttachment(attachment)
+                        }
+                    }
+                    _state.update { it.copy(isLoading = false, isSuccess = true, tempAttachments = emptyList()) }
                 }
                 is Result.Error -> {
                     val msg = when (val err = result.error) {
                         is DataError.Api -> err.message
                         is DataError.Network -> "Network error"
+                        is DataError.EmailNotVerified -> "Email not verified"
                     }
                     _state.update { it.copy(isLoading = false, errorMessage = msg) }
                 }
@@ -194,6 +316,20 @@ class AddTransactionViewModel(
         val txId = _state.value.transactionId ?: return
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, errorMessage = null) }
+            
+            // Delete physical attachment files before dropping DB records
+            try {
+                val list = attachmentDao.getAttachmentsForTransaction(txId)
+                list.forEach { attachment ->
+                    val file = File(attachment.localFilePath)
+                    if (file.exists()) {
+                        file.delete()
+                    }
+                }
+            } catch (e: Exception) {
+                // ignore file deletion failures
+            }
+
             when (val result = deleteTransactionUseCase(txId)) {
                 is Result.Success -> {
                     _state.update { it.copy(isLoading = false, isDeleteSuccess = true) }
@@ -202,6 +338,7 @@ class AddTransactionViewModel(
                     val msg = when (val err = result.error) {
                         is DataError.Api -> err.message
                         is DataError.Network -> "Network error"
+                        is DataError.EmailNotVerified -> "Email not verified"
                     }
                     _state.update { it.copy(isLoading = false, errorMessage = msg) }
                 }

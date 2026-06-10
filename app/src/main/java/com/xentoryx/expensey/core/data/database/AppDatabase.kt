@@ -9,6 +9,7 @@ import com.xentoryx.expensey.core.data.database.dao.CategoryDao
 import com.xentoryx.expensey.core.data.database.dao.DashboardDao
 import com.xentoryx.expensey.core.data.database.dao.RecurringTransactionDao
 import com.xentoryx.expensey.core.data.database.dao.TransactionDao
+import com.xentoryx.expensey.core.data.database.dao.AttachmentDao
 import com.xentoryx.expensey.core.data.database.entity.AccountEntity
 import com.xentoryx.expensey.core.data.database.entity.BudgetEntity
 import com.xentoryx.expensey.core.data.database.entity.CategoryBreakdownEntity
@@ -16,6 +17,7 @@ import com.xentoryx.expensey.core.data.database.entity.CategoryEntity
 import com.xentoryx.expensey.core.data.database.entity.DashboardOverviewEntity
 import com.xentoryx.expensey.core.data.database.entity.RecurringTransactionEntity
 import com.xentoryx.expensey.core.data.database.entity.TransactionEntity
+import com.xentoryx.expensey.core.data.database.entity.AttachmentEntity
 
 @Database(
     entities = [
@@ -25,9 +27,10 @@ import com.xentoryx.expensey.core.data.database.entity.TransactionEntity
         CategoryBreakdownEntity::class,
         TransactionEntity::class,
         CategoryEntity::class,
-        RecurringTransactionEntity::class
+        RecurringTransactionEntity::class,
+        AttachmentEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -38,4 +41,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val transactionDao: TransactionDao
     abstract val categoryDao: CategoryDao
     abstract val recurringTransactionDao: RecurringTransactionDao
+    abstract val attachmentDao: AttachmentDao
 }

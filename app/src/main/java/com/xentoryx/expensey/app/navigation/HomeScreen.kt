@@ -3,18 +3,19 @@ package com.xentoryx.expensey.app.navigation
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ListAlt
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import com.xentoryx.expensey.feature.accounts.presentation.list.AccountsListScreen
 import com.xentoryx.expensey.feature.budget.presentation.list.BudgetsListScreen
 import com.xentoryx.expensey.feature.auth.domain.usecase.LogoutUseCase
@@ -23,6 +24,8 @@ import com.xentoryx.expensey.feature.dashboard.presentation.settings.SettingsScr
 import com.xentoryx.expensey.feature.transaction.presentation.add.AddTransactionScreen
 import com.xentoryx.expensey.feature.transaction.presentation.list.TransactionsListScreen
 import com.xentoryx.expensey.feature.pdf_export.presentation.PdfExportScreen
+import com.xentoryx.expensey.feature.category.domain.usecase.GetCategoriesUseCase
+import com.xentoryx.expensey.feature.accounts.domain.usecase.GetAccountsUseCase
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -30,40 +33,64 @@ import org.koin.compose.koinInject
 @Composable
 fun HomeScreen(
     onLogout: () -> Unit,
-    logoutUseCase: LogoutUseCase = koinInject()
+    logoutUseCase: LogoutUseCase = koinInject(),
+    getCategoriesUseCase: GetCategoriesUseCase = koinInject(),
+    getAccountsUseCase: GetAccountsUseCase = koinInject()
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    var showAddTransaction by remember { mutableStateOf(false) }
-    var editTransactionId by remember { mutableStateOf<String?>(null) }
-    var showPdfExport by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    val homeNavController = rememberNavController()
+    val navBackStackEntry by homeNavController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
 
-    if (showAddTransaction) {
-        AddTransactionScreen(
-            viewModel = koinViewModel(),
-            onBackClick = { showAddTransaction = false }
-        )
-    } else if (editTransactionId != null) {
-        AddTransactionScreen(
-            viewModel = koinViewModel(),
-            transactionId = editTransactionId,
-            onBackClick = { editTransactionId = null }
-        )
-    } else if (showPdfExport) {
-        PdfExportScreen(
-            viewModel = koinViewModel(),
-            onBackClick = { showPdfExport = false }
-        )
-    } else {
-        Scaffold(
-            bottomBar = {
+    // Determine bottom bar visibility dynamically
+    val showBottomBar = remember(currentRoute) {
+        currentRoute == DashboardRoute::class.qualifiedName ||
+        currentRoute == TransactionsRoute::class.qualifiedName ||
+        currentRoute == AccountsRoute::class.qualifiedName ||
+        currentRoute == BudgetsRoute::class.qualifiedName ||
+        currentRoute == SettingsRoute::class.qualifiedName
+    }
+
+    // Determine currently selected index based on active route
+    val selectedTab = when (currentRoute) {
+        DashboardRoute::class.qualifiedName -> 0
+        TransactionsRoute::class.qualifiedName -> 1
+        AccountsRoute::class.qualifiedName -> 2
+        BudgetsRoute::class.qualifiedName -> 3
+        SettingsRoute::class.qualifiedName -> 4
+        else -> 0
+    }
+
+    LaunchedEffect(Unit) {
+        launch {
+            try {
+                getCategoriesUseCase.sync()
+            } catch (_: Exception) {}
+        }
+        launch {
+            try {
+                getAccountsUseCase.sync()
+            } catch (_: Exception) {}
+        }
+    }
+
+    Scaffold(
+        bottomBar = {
+            if (showBottomBar) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 8.dp
                 ) {
                     NavigationBarItem(
                         selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
+                        onClick = {
+                            homeNavController.navigate(DashboardRoute) {
+                                popUpTo(homeNavController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
                         icon = { Icon(Icons.Default.Home, contentDescription = "Dashboard") },
                         label = { Text("Home") },
                         colors = NavigationBarItemDefaults.colors(
@@ -76,7 +103,15 @@ fun HomeScreen(
                     )
                     NavigationBarItem(
                         selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
+                        onClick = {
+                            homeNavController.navigate(TransactionsRoute) {
+                                popUpTo(homeNavController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
                         icon = { Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Transactions") },
                         label = { Text("Txns") },
                         colors = NavigationBarItemDefaults.colors(
@@ -89,7 +124,15 @@ fun HomeScreen(
                     )
                     NavigationBarItem(
                         selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
+                        onClick = {
+                            homeNavController.navigate(AccountsRoute) {
+                                popUpTo(homeNavController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
                         icon = { Icon(Icons.Default.AccountBalanceWallet, contentDescription = "Accounts") },
                         label = { Text("Accounts") },
                         colors = NavigationBarItemDefaults.colors(
@@ -102,7 +145,15 @@ fun HomeScreen(
                     )
                     NavigationBarItem(
                         selected = selectedTab == 3,
-                        onClick = { selectedTab = 3 },
+                        onClick = {
+                            homeNavController.navigate(BudgetsRoute) {
+                                popUpTo(homeNavController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
                         icon = { Icon(Icons.Default.PieChart, contentDescription = "Budgets") },
                         label = { Text("Budgets") },
                         colors = NavigationBarItemDefaults.colors(
@@ -115,7 +166,15 @@ fun HomeScreen(
                     )
                     NavigationBarItem(
                         selected = selectedTab == 4,
-                        onClick = { selectedTab = 4 },
+                        onClick = {
+                            homeNavController.navigate(SettingsRoute) {
+                                popUpTo(homeNavController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
                         icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
                         label = { Text("Settings") },
                         colors = NavigationBarItemDefaults.colors(
@@ -127,80 +186,72 @@ fun HomeScreen(
                         )
                     )
                 }
-            },
-            containerColor = MaterialTheme.colorScheme.background,
-            contentWindowInsets = WindowInsets(0.dp)
-        ) { paddingValues ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0.dp)
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            NavHost(
+                navController = homeNavController,
+                startDestination = DashboardRoute,
+                modifier = Modifier.fillMaxSize()
             ) {
-                when (selectedTab) {
-                    0 -> DashboardScreen(
+                composable<DashboardRoute> {
+                    DashboardScreen(
                         viewModel = koinViewModel()
                     )
-                    1 -> TransactionsListScreen(
+                }
+                composable<TransactionsRoute> {
+                    TransactionsListScreen(
                         viewModel = koinViewModel(),
-                        onAddTransactionClick = { showAddTransaction = true },
-                        onDownloadClick = { showPdfExport = true },
-                        onTransactionClick = { txn -> editTransactionId = txn.id }
+                        onAddTransactionClick = {
+                            homeNavController.navigate(AddTransactionRoute(null))
+                        },
+                        onDownloadClick = {
+                            homeNavController.navigate(PdfExportRoute)
+                        },
+                        onTransactionClick = { txn ->
+                            homeNavController.navigate(AddTransactionRoute(txn.id))
+                        }
                     )
-                    2 -> AccountsListScreen(
+                }
+                composable<AccountsRoute> {
+                    AccountsListScreen(
                         viewModel = koinViewModel()
                     )
-                    3 -> BudgetsListScreen(
+                }
+                composable<BudgetsRoute> {
+                    BudgetsListScreen(
                         viewModel = koinViewModel()
                     )
-                    4 -> SettingsScreen()
-                    else -> Unit
+                }
+                composable<SettingsRoute> {
+                    SettingsScreen()
+                }
+                composable<AddTransactionRoute> { backStackEntry ->
+                    val route = backStackEntry.toRoute<AddTransactionRoute>()
+                    AddTransactionScreen(
+                        viewModel = koinViewModel(),
+                        transactionId = route.transactionId,
+                        onBackClick = {
+                            homeNavController.popBackStack()
+                        }
+                    )
+                }
+                composable<PdfExportRoute> {
+                    PdfExportScreen(
+                        viewModel = koinViewModel(),
+                        onBackClick = {
+                            homeNavController.popBackStack()
+                        }
+                    )
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun PlaceholderTabScreen(
-    name: String,
-    onLogoutClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(
-            imageVector = Icons.Default.PieChart,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(72.dp)
-        )
-        Spacer(modifier = Modifier.height(20.dp))
-        Text(
-            text = "$name Tab",
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "This feature is coming soon! Keep tracking and crush your limits.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 14.sp,
-            modifier = Modifier.padding(horizontal = 24.dp),
-            lineHeight = 20.sp
-        )
-        Spacer(modifier = Modifier.height(48.dp))
-        Button(
-            onClick = onLogoutClick,
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-        ) {
-            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = MaterialTheme.colorScheme.background)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Logout", color = MaterialTheme.colorScheme.background, fontWeight = FontWeight.Bold)
         }
     }
 }

@@ -2,6 +2,7 @@ package com.xentoryx.expensey.feature.auth.presentation.login
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xentoryx.expensey.core.domain.util.DataError
 import com.xentoryx.expensey.core.domain.util.onError
 import com.xentoryx.expensey.core.domain.util.onSuccess
 import com.xentoryx.expensey.feature.auth.domain.usecase.LoginParams
@@ -55,20 +56,20 @@ class LoginViewModel(
             loginUseCase(LoginParams(state.value.email, state.value.password))
                 .onSuccess { authResult ->
                     _state.update { it.copy(isLoading = false) }
-                    if (!authResult.user.isEmailVerified) {
-                        _effects.send(
-                            LoginEffect.NavigateToVerifyEmail(
-                                userId = authResult.user.id,
-                                email = authResult.user.email
-                            )
-                        )
-                    } else {
-                        _effects.send(LoginEffect.NavigateToHome)
-                    }
+                    _effects.send(LoginEffect.NavigateToHome)
                 }
                 .onError { error ->
                     _state.update { it.copy(isLoading = false) }
-                    _effects.send(LoginEffect.ShowError(error))
+                    if (error is DataError.EmailNotVerified) {
+                        _effects.send(
+                            LoginEffect.NavigateToVerifyEmail(
+                                userId = error.userId,
+                                email = error.email
+                            )
+                        )
+                    } else {
+                        _effects.send(LoginEffect.ShowError(error))
+                    }
                 }
         }
     }

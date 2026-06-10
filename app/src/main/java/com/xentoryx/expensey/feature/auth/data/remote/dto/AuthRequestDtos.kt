@@ -41,3 +41,15 @@ data class ResetPasswordRequestDto(
     val token: String,
     val newPassword: String
 )
+
+@Serializable
+data class UpdateProfileRequestDto(
+    val fullName: String,
+    val currencyCode: String
+)
+
+@Serializable
+data class ChangePasswordRequestDto(
+    val currentPassword: String,
+    val newPassword: String
+)

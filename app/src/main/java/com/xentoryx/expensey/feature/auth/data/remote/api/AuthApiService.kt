@@ -8,6 +8,7 @@ import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.request.put
 import io.ktor.client.statement.HttpResponse
 
 class AuthApiService(
@@ -64,6 +65,20 @@ class AuthApiService(
     suspend fun getProfile(): HttpResponse {
         return client.get(constructUrl("/auth/me")) {
             bearerAuth(tokenManager.getAccessToken() ?: "")
+        }
+    }
+
+    suspend fun updateProfile(request: UpdateProfileRequestDto): HttpResponse {
+        return client.put(constructUrl("/auth/me")) {
+            bearerAuth(tokenManager.getAccessToken() ?: "")
+            setBody(request)
+        }
+    }
+
+    suspend fun changePassword(request: ChangePasswordRequestDto): HttpResponse {
+        return client.post(constructUrl("/auth/change-password")) {
+            bearerAuth(tokenManager.getAccessToken() ?: "")
+            setBody(request)
         }
     }
 

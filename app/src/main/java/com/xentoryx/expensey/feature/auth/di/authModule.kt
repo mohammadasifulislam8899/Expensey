@@ -11,6 +11,7 @@ import com.xentoryx.expensey.feature.auth.presentation.reset_password.ResetPassw
 import com.xentoryx.expensey.feature.auth.presentation.verify_email.VerifyEmailViewModel
 import com.xentoryx.expensey.core.storage.TokenManager
 import org.koin.core.module.dsl.viewModelOf
+import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
 
 val authModule = module {
@@ -30,6 +31,8 @@ val authModule = module {
     factory { ForgotPasswordUseCase(get()) }
     factory { ResetPasswordUseCase(get()) }
     factory { GetProfileUseCase(get()) }
+    factory { UpdateProfileUseCase(get()) }
+    factory { ChangePasswordUseCase(get()) }
     factory { LogoutUseCase(get()) }
 
     // ViewModels

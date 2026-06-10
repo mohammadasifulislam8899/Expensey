@@ -19,4 +19,12 @@ class ExportApiService(
             parameter("to", to)
         }
     }
+
+    suspend fun downloadCsvReport(from: String, to: String): HttpResponse {
+        return client.get(constructUrl("/export/csv")) {
+            bearerAuth(tokenManager.getAccessToken() ?: "")
+            parameter("from", from)
+            parameter("to", to)
+        }
+    }
 }

@@ -39,6 +39,16 @@ interface AuthRepository {
 
     suspend fun getProfile(): Result<User, DataError>
 
+    suspend fun updateProfile(
+        fullName: String,
+        currencyCode: String
+    ): Result<User, DataError>
+
+    suspend fun changePassword(
+        currentPassword: String,
+        newPassword: String
+    ): EmptyResult<DataError>
+
     suspend fun logout(): EmptyResult<DataError>
 
     fun isLoggedIn(): Flow<Boolean>

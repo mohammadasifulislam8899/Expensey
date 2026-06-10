@@ -16,6 +16,7 @@ import com.xentoryx.expensey.feature.dashboard.data.mapper.toDomain
 import com.xentoryx.expensey.feature.dashboard.data.mapper.toEntity
 import com.xentoryx.expensey.feature.dashboard.domain.model.Transaction
 import com.xentoryx.expensey.feature.transaction.data.remote.api.TransactionApiService
+import com.xentoryx.expensey.feature.transaction.data.remote.dto.CreateTransactionRequestDto
 import com.xentoryx.expensey.feature.transaction.data.remote.dto.TransactionListResponseDto
 import com.xentoryx.expensey.feature.transaction.data.remote.dto.UpdateTransactionRequestDto
 import com.xentoryx.expensey.feature.dashboard.data.remote.dto.TransactionResponseDto
@@ -41,45 +42,72 @@ class TransactionRepositoryImpl(
         note: String?,
         transactionDate: String
     ): Result<Transaction, DataError> {
-        val userId = tokenManager.getUserId() ?: return Result.Error(DataError.Api("Unauthorized"))
         val transactionId = UUID.randomUUID().toString()
-        val now = Instant.now().toString()
-
-        val entity = TransactionEntity(
+        val request = CreateTransactionRequestDto(
             id = transactionId,
-            userId = userId,
             accountId = accountId,
             categoryId = categoryId,
             transferToAccountId = transferToAccountId,
             amount = amount,
             type = type,
             note = note,
-            transactionDate = transactionDate,
-            createdAt = now,
-            isSynced = false
+            transactionDate = transactionDate
         )
 
-        try {
-            transactionDao.insertTransaction(entity)
-        } catch (e: Exception) {
-            return Result.Error(DataError.Api("Failed to save transaction locally"))
+        // Network-first: try to create on backend directly
+        val networkResult = safeCall<TransactionResponseDto> {
+            apiService.createTransaction(request)
         }
 
-        try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+        return when (networkResult) {
+            is Result.Success -> {
+                // Backend succeeded — save server response locally with isSynced = true
+                val entity = networkResult.data.toEntity(isSynced = true)
+                try {
+                    transactionDao.insertTransaction(entity)
+                } catch (_: Exception) { /* ignore local cache error */ }
+                Result.Success(entity.toDomain())
+            }
+            is Result.Error -> {
+                // Network failed — save locally for later sync
+                val userId = tokenManager.getUserId()
+                    ?: return Result.Error(DataError.Api("Unauthorized"))
+                val now = Instant.now().toString()
 
-            val syncRequest = OneTimeWorkRequestBuilder<SyncWorker>()
-                .setConstraints(constraints)
-                .build()
+                val entity = TransactionEntity(
+                    id = transactionId,
+                    userId = userId,
+                    accountId = accountId,
+                    categoryId = categoryId,
+                    transferToAccountId = transferToAccountId,
+                    amount = amount,
+                    type = type,
+                    note = note,
+                    transactionDate = transactionDate,
+                    createdAt = now,
+                    isSynced = false
+                )
 
-            WorkManager.getInstance(context).enqueue(syncRequest)
-        } catch (e: Exception) {
-            // Ignore WorkManager initialization errors
+                try {
+                    transactionDao.insertTransaction(entity)
+                } catch (e: Exception) {
+                    return Result.Error(DataError.Api("Failed to save transaction locally"))
+                }
+
+                // Enqueue background sync for when network returns
+                try {
+                    val constraints = Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                    val syncRequest = OneTimeWorkRequestBuilder<SyncWorker>()
+                        .setConstraints(constraints)
+                        .build()
+                    WorkManager.getInstance(context).enqueue(syncRequest)
+                } catch (_: Exception) { }
+
+                Result.Success(entity.toDomain())
+            }
         }
-
-        return Result.Success(entity.toDomain())
     }
 
     override fun getTransactionsFlow(): Flow<List<Transaction>> {

@@ -6,6 +6,7 @@ import androidx.work.WorkerParameters
 import com.xentoryx.expensey.core.data.database.dao.TransactionDao
 import com.xentoryx.expensey.feature.transaction.data.remote.api.TransactionApiService
 import com.xentoryx.expensey.feature.transaction.data.remote.dto.CreateTransactionRequestDto
+import com.xentoryx.expensey.core.data.networking.tryToRefreshToken
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -33,6 +34,7 @@ class SyncWorker(
         for (tx in unsynced) {
             try {
                 val request = CreateTransactionRequestDto(
+                    id = tx.id,
                     accountId = tx.accountId,
                     categoryId = tx.categoryId,
                     transferToAccountId = tx.transferToAccountId,
@@ -41,7 +43,13 @@ class SyncWorker(
                     note = tx.note,
                     transactionDate = tx.transactionDate
                 )
-                val response = apiService.createTransaction(request)
+                var response = apiService.createTransaction(request)
+                if (response.status.value == 401) {
+                    if (tryToRefreshToken()) {
+                        response = apiService.createTransaction(request)
+                    }
+                }
+                
                 if (response.status.value in 200..299) {
                     transactionDao.markSynced(tx.id)
                 } else {

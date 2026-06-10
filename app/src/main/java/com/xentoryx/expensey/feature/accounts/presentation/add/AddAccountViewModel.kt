@@ -102,6 +102,7 @@ class AddAccountViewModel(
                     val msg = when (val error = result.error) {
                         is DataError.Api -> error.message
                         is DataError.Network -> "Network error occurred"
+                        is DataError.EmailNotVerified -> "Email not verified"
                     }
                     _state.update { it.copy(isLoading = false, errorMessage = msg) }
                 }

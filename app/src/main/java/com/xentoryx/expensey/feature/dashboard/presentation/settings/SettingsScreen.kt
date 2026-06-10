@@ -24,6 +24,17 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Lock
+import androidx.fragment.app.FragmentActivity
+import com.xentoryx.expensey.core.domain.util.DataError
+import com.xentoryx.expensey.core.presentation.util.BiometricPromptManager
+import com.xentoryx.expensey.feature.auth.domain.model.User
+import com.xentoryx.expensey.feature.auth.domain.usecase.GetProfileUseCase
+import com.xentoryx.expensey.feature.auth.domain.usecase.UpdateProfileUseCase
+import com.xentoryx.expensey.feature.auth.domain.usecase.ChangePasswordUseCase
+import com.xentoryx.expensey.feature.auth.domain.usecase.UpdateProfileParams
+import com.xentoryx.expensey.feature.auth.domain.usecase.ChangePasswordParams
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -129,6 +140,32 @@ fun SettingsMainContent(
     val scope = rememberCoroutineScope()
     val themeMode by tokenManager.themeMode.collectAsState(initial = "system")
 
+    val getProfileUseCase: GetProfileUseCase = koinInject()
+    val updateProfileUseCase: UpdateProfileUseCase = koinInject()
+    val changePasswordUseCase: ChangePasswordUseCase = koinInject()
+
+    var userProfile by remember { mutableStateOf<User?>(null) }
+    var isLoadingProfile by remember { mutableStateOf(false) }
+    var showEditProfileDialog by remember { mutableStateOf(false) }
+    var showChangePasswordDialog by remember { mutableStateOf(false) }
+
+    val activity = context as? FragmentActivity
+    val biometricPromptManager = remember(activity) { activity?.let { BiometricPromptManager(it) } }
+    val biometricEnabledState by tokenManager.biometricEnabled.collectAsState(initial = false)
+
+    LaunchedEffect(Unit) {
+        isLoadingProfile = true
+        when (val result = getProfileUseCase()) {
+            is Result.Success -> {
+                userProfile = result.data
+            }
+            is Result.Error -> {
+                // handle error
+            }
+        }
+        isLoadingProfile = false
+    }
+
     var isNotificationsAllowed by remember {
         mutableStateOf(checkNotificationPermission(context))
     }
@@ -179,6 +216,61 @@ fun SettingsMainContent(
             ) {
                 Spacer(modifier = Modifier.height(4.dp))
 
+                // 0. Profile Settings Card
+                SettingsSectionCard(
+                    title = "Profile Settings",
+                    icon = Icons.Default.Person,
+                    subtitle = "Manage your personal info and security"
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (isLoadingProfile) {
+                            Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            }
+                        } else {
+                            val user = userProfile
+                            if (user != null) {
+                                Text(
+                                    text = "Name: ${user.fullName}",
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "Email: ${user.email}",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp
+                                )
+                                Text(
+                                    text = "Currency: ${user.currencyCode}",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Button(
+                                    onClick = { showEditProfileDialog = true },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Edit Profile", fontSize = 12.sp)
+                                }
+                                OutlinedButton(
+                                    onClick = { showChangePasswordDialog = true },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Change Password", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // 1. Theme Configuration Card
                 SettingsSectionCard(
                     title = "App Theme",
@@ -225,6 +317,70 @@ fun SettingsMainContent(
                             label = "Recurring Transactions",
                             onClick = onRecurringClick
                         )
+                    }
+                }
+
+                // 2.5. Biometrics Security Card
+                if (biometricPromptManager?.isBiometricAvailable() == true) {
+                    SettingsSectionCard(
+                        title = "Security",
+                        icon = Icons.Default.Lock,
+                        subtitle = "Protect your app with biometrics"
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Biometric Login",
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Use fingerprint or face recognition to login.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Switch(
+                                checked = biometricEnabledState,
+                                onCheckedChange = { checked ->
+                                    if (checked) {
+                                        biometricPromptManager.showBiometricPrompt(
+                                            title = "Enable Biometric Login",
+                                            description = "Confirm your biometric credentials to enable this feature.",
+                                            onSuccess = {
+                                                scope.launch {
+                                                    tokenManager.saveBiometricEnabled(true)
+                                                    Toast.makeText(context, "Biometric login enabled!", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            onError = { _, errString ->
+                                                Toast.makeText(context, "Failed: $errString", Toast.LENGTH_SHORT).show()
+                                            },
+                                            onFailed = {
+                                                Toast.makeText(context, "Authentication failed.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        )
+                                    } else {
+                                        scope.launch {
+                                            tokenManager.saveBiometricEnabled(false)
+                                            Toast.makeText(context, "Biometric login disabled.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = MaterialTheme.colorScheme.background,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    uncheckedBorderColor = MaterialTheme.colorScheme.outline
+                                )
+                            )
+                        }
                     }
                 }
 
@@ -290,6 +446,169 @@ fun SettingsMainContent(
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
+            }
+
+            // Edit Profile Dialog
+            if (showEditProfileDialog) {
+                var name by remember { mutableStateOf(userProfile?.fullName ?: "") }
+                var currency by remember { mutableStateOf(userProfile?.currencyCode ?: "") }
+                var error by remember { mutableStateOf<String?>(null) }
+                var isSaving by remember { mutableStateOf(false) }
+
+                AlertDialog(
+                    onDismissRequest = { if (!isSaving) showEditProfileDialog = false },
+                    title = { Text("Edit Profile", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            OutlinedTextField(
+                                value = name,
+                                onValueChange = { name = it },
+                                label = { Text("Full Name") },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            OutlinedTextField(
+                                value = currency,
+                                onValueChange = { currency = it },
+                                label = { Text("Currency Code (e.g. USD, BDT)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            if (error != null) {
+                                Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    isSaving = true
+                                    error = null
+                                    when (val res = updateProfileUseCase(UpdateProfileParams(name, currency))) {
+                                        is Result.Success -> {
+                                            userProfile = res.data
+                                            showEditProfileDialog = false
+                                            Toast.makeText(context, "Profile updated!", Toast.LENGTH_SHORT).show()
+                                        }
+                                        is Result.Error -> {
+                                            error = when (val err = res.error) {
+                                                is DataError.Api -> err.message
+                                                else -> "Failed to update profile"
+                                            }
+                                        }
+                                    }
+                                    isSaving = false
+                                }
+                            },
+                            enabled = !isSaving && name.isNotBlank() && currency.isNotBlank()
+                        ) {
+                            if (isSaving) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary)
+                            } else {
+                                Text("Save")
+                            }
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showEditProfileDialog = false },
+                            enabled = !isSaving
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+            // Change Password Dialog
+            if (showChangePasswordDialog) {
+                var currentPassword by remember { mutableStateOf("") }
+                var newPassword by remember { mutableStateOf("") }
+                var confirmPassword by remember { mutableStateOf("") }
+                var error by remember { mutableStateOf<String?>(null) }
+                var isSaving by remember { mutableStateOf(false) }
+
+                AlertDialog(
+                    onDismissRequest = { if (!isSaving) showChangePasswordDialog = false },
+                    title = { Text("Change Password", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            OutlinedTextField(
+                                value = currentPassword,
+                                onValueChange = { currentPassword = it },
+                                label = { Text("Current Password") },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            OutlinedTextField(
+                                value = newPassword,
+                                onValueChange = { newPassword = it },
+                                label = { Text("New Password") },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            OutlinedTextField(
+                                value = confirmPassword,
+                                onValueChange = { confirmPassword = it },
+                                label = { Text("Confirm New Password") },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            if (error != null) {
+                                Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (newPassword != confirmPassword) {
+                                    error = "New passwords do not match"
+                                    return@Button
+                                }
+                                scope.launch {
+                                    isSaving = true
+                                    error = null
+                                    when (val res = changePasswordUseCase(ChangePasswordParams(currentPassword, newPassword))) {
+                                        is Result.Success -> {
+                                            showChangePasswordDialog = false
+                                            Toast.makeText(context, "Password changed!", Toast.LENGTH_SHORT).show()
+                                        }
+                                        is Result.Error -> {
+                                            error = when (val err = res.error) {
+                                                is DataError.Api -> err.message
+                                                else -> "Failed to change password"
+                                            }
+                                        }
+                                    }
+                                    isSaving = false
+                                }
+                            },
+                            enabled = !isSaving && currentPassword.isNotBlank() && newPassword.isNotBlank() && confirmPassword.isNotBlank()
+                        ) {
+                            if (isSaving) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary)
+                            } else {
+                                Text("Change")
+                            }
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showChangePasswordDialog = false },
+                            enabled = !isSaving
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                )
             }
         }
     }

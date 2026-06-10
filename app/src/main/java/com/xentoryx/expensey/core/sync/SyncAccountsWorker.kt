@@ -33,6 +33,7 @@ class SyncAccountsWorker(
         for (account in unsynced) {
             try {
                 val request = CreateAccountRequestDto(
+                    id = account.accountId,
                     name = account.accountName,
                     type = account.accountType,
                     initialBalance = account.balance,

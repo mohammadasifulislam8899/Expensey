@@ -119,7 +119,7 @@ fun PdfExportScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = "PDF Report Export",
+                        text = "Export Report",
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
                         fontSize = 18.sp
@@ -139,7 +139,7 @@ fun PdfExportScreen(
             )
         },
         floatingActionButton = {
-            if (state.pdfBytes != null && pdfPages.isNotEmpty()) {
+            if (state.exportFormat == "PDF" && state.pdfBytes != null && pdfPages.isNotEmpty()) {
                 FloatingActionButton(
                     onClick = {
                         sharePdf(context, state.pdfBytes!!, state.startDateMillis!!, state.endDateMillis!!)
@@ -168,12 +168,15 @@ fun PdfExportScreen(
                     .padding(horizontal = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Date Picker trigger card if PDF is not yet loaded
-                if (state.pdfBytes == null && !state.isLoading) {
+                // Input panel: only visible if report is NOT loaded
+                val isReportGenerated = (state.exportFormat == "PDF" && state.pdfBytes != null) ||
+                        (state.exportFormat == "CSV" && state.csvBytes != null)
+
+                if (!isReportGenerated && !state.isLoading) {
                     Spacer(modifier = Modifier.height(24.dp))
                     
                     Text(
-                        text = "Select Report Range",
+                        text = "Select Report Details",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.onBackground,
@@ -183,7 +186,7 @@ fun PdfExportScreen(
                     Spacer(modifier = Modifier.height(6.dp))
                     
                     Text(
-                        text = "Choose the start and end dates to generate your beautiful transaction statement.",
+                        text = "Choose the format and start/end dates to generate your beautiful transaction statement.",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth(),
@@ -191,6 +194,36 @@ fun PdfExportScreen(
                     )
                     
                     Spacer(modifier = Modifier.height(24.dp))
+
+                    Text(
+                        text = "Select Format",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        listOf("PDF", "CSV").forEach { format ->
+                            val selected = state.exportFormat == format
+                            FilterChip(
+                                selected = selected,
+                                onClick = { viewModel.selectExportFormat(format) },
+                                label = { Text(format, fontWeight = FontWeight.Bold) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                    selectedLabelColor = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(20.dp))
                     
                     DateSelectionCard(
                         startDate = state.startDateMillis,
@@ -213,7 +246,7 @@ fun PdfExportScreen(
                         )
                     ) {
                         Text(
-                            text = "Generate PDF Report",
+                            text = "Generate ${state.exportFormat} Report",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.background
@@ -233,7 +266,6 @@ fun PdfExportScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            // Custom glowing spinner
                             CircularProgressIndicator(
                                 modifier = Modifier.size(64.dp),
                                 strokeWidth = 5.dp,
@@ -243,7 +275,6 @@ fun PdfExportScreen(
                             
                             Spacer(modifier = Modifier.height(24.dp))
                             
-                            // Crossfade animation for shifting loader status text
                             Crossfade(
                                 targetState = state.loadingMessage,
                                 animationSpec = tween(durationMillis = 500)
@@ -281,7 +312,7 @@ fun PdfExportScreen(
                 }
 
                 // PDF Viewer
-                if (state.pdfBytes != null && pdfPages.isNotEmpty() && !state.isLoading) {
+                if (state.exportFormat == "PDF" && state.pdfBytes != null && pdfPages.isNotEmpty() && !state.isLoading) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -335,6 +366,64 @@ fun PdfExportScreen(
                                 )
                             }
                         }
+                    }
+                }
+
+                // CSV Success Screen
+                if (state.exportFormat == "CSV" && state.csvBytes != null && !state.isLoading) {
+                    Spacer(modifier = Modifier.height(48.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DateRange,
+                            contentDescription = "CSV Ready",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text(
+                        text = "Spreadsheet Generated Successfully!",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Your transactions are exported into a standard CSV format which you can open in Excel, Google Sheets, or share directly.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(36.dp))
+                    Button(
+                        onClick = {
+                            shareCsv(context, state.csvBytes!!, state.startDateMillis!!, state.endDateMillis!!)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+                        shape = RoundedCornerShape(18.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Share, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Share CSV File", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.clearPdf() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(18.dp)
+                    ) {
+                        Text("Change Range / Format")
                     }
                 }
             }
@@ -460,6 +549,31 @@ private fun sharePdf(context: Context, bytes: ByteArray, startDate: Long, endDat
         }
 
         context.startActivity(Intent.createChooser(intent, "Share PDF Report"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error saving report file: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun shareCsv(context: Context, bytes: ByteArray, startDate: Long, endDate: Long) {
+    val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+    val startStr = Instant.ofEpochMilli(startDate).atZone(ZoneId.systemDefault()).toLocalDate().format(formatter)
+    val endStr = Instant.ofEpochMilli(endDate).atZone(ZoneId.systemDefault()).toLocalDate().format(formatter)
+    
+    try {
+        val file = File(context.cacheDir, "Expensey_Report_${startStr}_to_${endStr}.csv")
+        file.writeBytes(bytes)
+
+        val authority = "${context.packageName}.fileprovider"
+        val uri = FileProvider.getUriForFile(context, authority, file)
+
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "Expensey Financial Report ($startStr to $endStr)")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        context.startActivity(Intent.createChooser(intent, "Share CSV Report"))
     } catch (e: Exception) {
         Toast.makeText(context, "Error saving report file: ${e.message}", Toast.LENGTH_SHORT).show()
     }

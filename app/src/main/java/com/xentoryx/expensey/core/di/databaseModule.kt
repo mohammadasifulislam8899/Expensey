@@ -22,4 +22,5 @@ val databaseModule = module {
     single { get<AppDatabase>().transactionDao }
     single { get<AppDatabase>().categoryDao }
     single { get<AppDatabase>().recurringTransactionDao }
+    single { get<AppDatabase>().attachmentDao }
 }

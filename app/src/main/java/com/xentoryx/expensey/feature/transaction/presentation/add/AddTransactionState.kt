@@ -1,7 +1,14 @@
 package com.xentoryx.expensey.feature.transaction.presentation.add
 
+import com.xentoryx.expensey.core.data.database.entity.AttachmentEntity
 import com.xentoryx.expensey.feature.dashboard.domain.model.AccountSummary
 import com.xentoryx.expensey.feature.dashboard.domain.model.CategoryBreakdown
+
+data class TempAttachment(
+    val localFilePath: String,
+    val fileName: String,
+    val fileType: String
+)
 
 data class AddTransactionState(
     val transactionId: String? = null,
@@ -17,5 +24,7 @@ data class AddTransactionState(
     val isLoading: Boolean = false,
     val isSuccess: Boolean = false,
     val isDeleteSuccess: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val savedAttachments: List<AttachmentEntity> = emptyList(),
+    val tempAttachments: List<TempAttachment> = emptyList()
 )

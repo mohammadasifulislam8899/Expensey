@@ -19,6 +19,8 @@ import com.xentoryx.expensey.feature.auth.data.remote.dto.RegisterResponseDto
 import com.xentoryx.expensey.feature.auth.data.remote.dto.ResendOtpRequestDto
 import com.xentoryx.expensey.feature.auth.data.remote.dto.ResetPasswordRequestDto
 import com.xentoryx.expensey.feature.auth.data.remote.dto.UserResponseDto
+import com.xentoryx.expensey.feature.auth.data.remote.dto.UpdateProfileRequestDto
+import com.xentoryx.expensey.feature.auth.data.remote.dto.ChangePasswordRequestDto
 import com.xentoryx.expensey.feature.auth.data.remote.dto.VerifyEmailRequestDto
 import com.xentoryx.expensey.feature.auth.domain.model.AuthResult
 import com.xentoryx.expensey.feature.auth.domain.model.RegisterResult
@@ -97,6 +99,24 @@ class AuthRepositoryImpl(
         return safeCall<UserResponseDto> {
             apiService.getProfile()
         }.map { it.toDomain() }
+    }
+
+    override suspend fun updateProfile(
+        fullName: String,
+        currencyCode: String
+    ): Result<User, DataError> {
+        return safeCall<UserResponseDto> {
+            apiService.updateProfile(UpdateProfileRequestDto(fullName, currencyCode))
+        }.map { it.toDomain() }
+    }
+
+    override suspend fun changePassword(
+        currentPassword: String,
+        newPassword: String
+    ): EmptyResult<DataError> {
+        return safeCall<MessageResponseDto> {
+            apiService.changePassword(ChangePasswordRequestDto(currentPassword, newPassword))
+        }.asEmptyDataResult()
     }
 
     override suspend fun logout(): EmptyResult<DataError> {

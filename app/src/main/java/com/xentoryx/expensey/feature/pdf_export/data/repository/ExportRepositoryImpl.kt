@@ -14,4 +14,10 @@ class ExportRepositoryImpl(
             apiService.downloadPdfReport(from, to)
         }
     }
+
+    override suspend fun getCsvReport(from: String, to: String): Result<ByteArray, DataError> {
+        return safeCall<ByteArray> {
+            apiService.downloadCsvReport(from, to)
+        }
+    }
 }
