@@ -37,6 +37,9 @@ interface AccountDao {
     @Query("DELETE FROM accounts WHERE accountId = :accountId")
     suspend fun deleteAccountById(accountId: String)
 
+    @Query("UPDATE accounts SET balance = balance + :amount WHERE accountId = :accountId")
+    suspend fun adjustBalance(accountId: String, amount: Double)
+
     @Transaction
     suspend fun replaceAccounts(accounts: List<AccountEntity>) {
         deleteAllAccounts()

@@ -11,14 +11,18 @@ import com.xentoryx.expensey.core.data.networking.safeCall
 import com.xentoryx.expensey.core.domain.util.DataError
 import com.xentoryx.expensey.core.domain.util.Result
 import com.xentoryx.expensey.core.sync.SyncAccountsWorker
+import com.xentoryx.expensey.feature.accounts.data.remote.dto.CreateAccountRequestDto
 import com.xentoryx.expensey.feature.dashboard.data.mapper.toDomain
 import com.xentoryx.expensey.feature.dashboard.domain.model.AccountSummary
 import com.xentoryx.expensey.feature.accounts.data.remote.api.AccountApiService
 import com.xentoryx.expensey.feature.accounts.data.remote.dto.AccountResponseDto
 import com.xentoryx.expensey.feature.accounts.data.remote.dto.UpdateAccountRequestDto
 import com.xentoryx.expensey.feature.accounts.domain.repository.AccountRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 class AccountRepositoryImpl(
@@ -113,73 +117,78 @@ class AccountRepositoryImpl(
         type: String,
         currencyCode: String
     ): Result<AccountSummary, DataError> {
-        val request = UpdateAccountRequestDto(name = name, type = type, currencyCode = currencyCode)
-        val responseResult = safeCall<AccountResponseDto> {
-            apiService.updateAccount(id, request)
+        val localAccount = accountDao.getAccountById(id)
+            ?: return Result.Error(DataError.Api("Account not found locally"))
+
+        val entity = AccountEntity(
+            accountId = id,
+            accountName = name,
+            accountType = type,
+            balance = localAccount.balance,
+            currencyCode = currencyCode,
+            isSynced = false
+        )
+
+        try {
+            accountDao.insertAccount(entity)
+        } catch (e: Exception) {
+            return Result.Error(DataError.Api("Failed to save updated account locally"))
         }
-        return when (responseResult) {
-            is Result.Success -> {
-                val dto = responseResult.data
-                val entity = AccountEntity(
-                    accountId = dto.id,
-                    accountName = dto.name,
-                    accountType = dto.type,
-                    balance = dto.balance,
-                    currencyCode = dto.currencyCode,
-                    isSynced = true
-                )
-                try {
-                    accountDao.insertAccount(entity)
-                    Result.Success(entity.toDomain())
-                } catch (e: Exception) {
-                    Result.Error(DataError.Api("Failed to save updated account locally"))
+
+        // Launch backend sync asynchronously
+        val request = CreateAccountRequestDto(
+            id = id,
+            name = name,
+            type = type,
+            initialBalance = localAccount.balance,
+            currencyCode = currencyCode
+        )
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val networkResult = safeCall<AccountResponseDto> {
+                    apiService.createAccount(request)
                 }
-            }
-            is Result.Error -> Result.Error(responseResult.error)
+                if (networkResult is Result.Success) {
+                    accountDao.markAccountSynced(id)
+                }
+            } catch (_: Exception) { }
         }
+
+        // Also enqueue WorkManager for sync
+        try {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+            val syncRequest = OneTimeWorkRequestBuilder<SyncAccountsWorker>()
+                .setConstraints(constraints)
+                .build()
+            WorkManager.getInstance(context).enqueue(syncRequest)
+        } catch (_: Exception) { }
+
+        return Result.Success(entity.toDomain())
     }
 
     override suspend fun deleteAccount(id: String): Result<Unit, DataError> {
         val localAccount = accountDao.getAccountById(id)
-        if (localAccount == null) {
-            return Result.Success(Unit)
+            ?: return Result.Success(Unit)
+
+        try {
+            accountDao.deleteAccountById(id)
+        } catch (e: Exception) {
+            return Result.Error(DataError.Api("Failed to delete account locally"))
         }
 
-        if (!localAccount.isSynced) {
-            try {
-                accountDao.deleteAccountById(id)
-                return Result.Success(Unit)
-            } catch (e: Exception) {
-                return Result.Error(DataError.Api("Failed to delete account locally"))
-            }
-        }
-
-        val responseResult = safeCall<Unit> {
-            apiService.deleteAccount(id)
-        }
-        return when (responseResult) {
-            is Result.Success -> {
+        if (localAccount.isSynced) {
+            CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    accountDao.deleteAccountById(id)
-                    Result.Success(Unit)
-                } catch (e: Exception) {
-                    Result.Error(DataError.Api("Failed to delete account locally"))
-                }
-            }
-            is Result.Error -> {
-                val error = responseResult.error
-                val isNotFound = (error is DataError.Api && error.message.contains("not found", ignoreCase = true))
-                if (isNotFound) {
-                    try {
-                        accountDao.deleteAccountById(id)
-                        Result.Success(Unit)
-                    } catch (e: Exception) {
-                        Result.Error(DataError.Api("Failed to delete account locally"))
+                    safeCall<Unit> {
+                        apiService.deleteAccount(id)
                     }
-                } else {
-                    Result.Error(error)
-                }
+                } catch (_: Exception) { }
             }
         }
+
+        return Result.Success(Unit)
     }
 }

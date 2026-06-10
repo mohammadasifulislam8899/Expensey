@@ -12,7 +12,7 @@ import org.koin.dsl.module
 
 val transactionModule = module {
     single { TransactionApiService(get(), get()) }
-    single<TransactionRepository> { TransactionRepositoryImpl(get(), get(), get(), get()) }
+    single<TransactionRepository> { TransactionRepositoryImpl(get(), get(), get(), get(), get()) }
 
     factory { CreateTransactionUseCase(get()) }
     factory { GetTransactionsUseCase(get()) }
