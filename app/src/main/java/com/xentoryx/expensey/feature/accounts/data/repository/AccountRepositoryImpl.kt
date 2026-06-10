@@ -140,6 +140,20 @@ class AccountRepositoryImpl(
     }
 
     override suspend fun deleteAccount(id: String): Result<Unit, DataError> {
+        val localAccount = accountDao.getAccountById(id)
+        if (localAccount == null) {
+            return Result.Success(Unit)
+        }
+
+        if (!localAccount.isSynced) {
+            try {
+                accountDao.deleteAccountById(id)
+                return Result.Success(Unit)
+            } catch (e: Exception) {
+                return Result.Error(DataError.Api("Failed to delete account locally"))
+            }
+        }
+
         val responseResult = safeCall<Unit> {
             apiService.deleteAccount(id)
         }
@@ -152,7 +166,20 @@ class AccountRepositoryImpl(
                     Result.Error(DataError.Api("Failed to delete account locally"))
                 }
             }
-            is Result.Error -> Result.Error(responseResult.error)
+            is Result.Error -> {
+                val error = responseResult.error
+                val isNotFound = (error is DataError.Api && error.message.contains("not found", ignoreCase = true))
+                if (isNotFound) {
+                    try {
+                        accountDao.deleteAccountById(id)
+                        Result.Success(Unit)
+                    } catch (e: Exception) {
+                        Result.Error(DataError.Api("Failed to delete account locally"))
+                    }
+                } else {
+                    Result.Error(error)
+                }
+            }
         }
     }
 }

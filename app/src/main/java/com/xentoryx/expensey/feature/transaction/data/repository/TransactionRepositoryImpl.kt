@@ -179,6 +179,20 @@ class TransactionRepositoryImpl(
     }
 
     override suspend fun deleteTransaction(id: String): Result<Unit, DataError> {
+        val localTx = transactionDao.getTransactionById(id)
+        if (localTx == null) {
+            return Result.Success(Unit)
+        }
+
+        if (!localTx.isSynced) {
+            try {
+                transactionDao.deleteTransactionById(id)
+                return Result.Success(Unit)
+            } catch (e: Exception) {
+                return Result.Error(DataError.Api("Failed to delete transaction locally"))
+            }
+        }
+
         val responseResult = safeCall<Unit> {
             apiService.deleteTransaction(id)
         }
@@ -191,7 +205,20 @@ class TransactionRepositoryImpl(
                     Result.Error(DataError.Api("Failed to delete transaction locally"))
                 }
             }
-            is Result.Error -> Result.Error(responseResult.error)
+            is Result.Error -> {
+                val error = responseResult.error
+                val isNotFound = (error is DataError.Api && error.message.contains("not found", ignoreCase = true))
+                if (isNotFound) {
+                    try {
+                        transactionDao.deleteTransactionById(id)
+                        Result.Success(Unit)
+                    } catch (e: Exception) {
+                        Result.Error(DataError.Api("Failed to delete transaction locally"))
+                    }
+                } else {
+                    Result.Error(error)
+                }
+            }
         }
     }
 }
