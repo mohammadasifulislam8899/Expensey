@@ -47,7 +47,7 @@ fun NavGraphBuilder.authNavGraph(
                 viewModel = koinViewModel(),
                 onNavigateToLogin = {
                     navController.navigate(LoginRoute) {
-                        popUpTo<AuthGraphRoute> { inclusive = true }
+                        popUpTo<LoginRoute> { inclusive = true }
                     }
                 }
             )
@@ -63,7 +63,7 @@ fun NavGraphBuilder.authNavGraph(
                 viewModel = koinViewModel(),
                 onNavigateToLogin = {
                     navController.navigate(LoginRoute) {
-                        popUpTo<AuthGraphRoute> { inclusive = true }
+                        popUpTo<LoginRoute> { inclusive = true }
                     }
                 }
             )
