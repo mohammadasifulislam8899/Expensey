@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -18,6 +19,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
@@ -57,4 +59,25 @@ dependencies {
 
     implementation(libs.androidx.datastore.preferences)
 
+    implementation(libs.androidx.compose.material.icons.extended)
+
+    implementation(libs.androidx.navigation.compose)
+
+    implementation(libs.coil.compose)
+
+    // Room
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
+    // WorkManager
+    implementation(libs.androidx.work.runtime.ktx)
+
+    // Biometrics
+    implementation("androidx.biometric:biometric-ktx:1.2.0-alpha05")
+    implementation("androidx.fragment:fragment-ktx:1.6.2")
+
+    // Firebase (Libraries compile fine, enable google-services plugin later)
+    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
 }

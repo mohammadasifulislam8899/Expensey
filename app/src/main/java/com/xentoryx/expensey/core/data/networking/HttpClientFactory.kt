@@ -15,13 +15,15 @@ object HttpClientFactory {
     fun create(engine: HttpClientEngine): HttpClient {
         return HttpClient(engine) {
             install(Logging) {
-                level = LogLevel.ALL
+//                level = if (BuildConfig.DEBUG) LogLevel.ALL else LogLevel.NONE
                 logger = Logger.ANDROID
+                level=LogLevel.ALL
             }
             install(ContentNegotiation) {
                 json(Json {
                     prettyPrint = true
                     isLenient = true
+                    ignoreUnknownKeys = true
                 })
             }
             defaultRequest {
