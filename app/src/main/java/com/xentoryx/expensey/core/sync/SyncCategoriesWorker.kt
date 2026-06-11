@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.xentoryx.expensey.core.data.database.dao.CategoryDao
+import com.xentoryx.expensey.core.data.database.dao.TransactionDao
+import com.xentoryx.expensey.core.data.database.dao.BudgetDao
+import com.xentoryx.expensey.core.data.database.dao.RecurringTransactionDao
 import com.xentoryx.expensey.core.data.database.entity.CategoryEntity
 import com.xentoryx.expensey.feature.category.data.remote.api.CategoryApiService
 import com.xentoryx.expensey.feature.category.data.remote.dto.CategoryResponseDto
@@ -21,6 +24,9 @@ class SyncCategoriesWorker(
 
     private val categoryDao: CategoryDao by inject()
     private val apiService: CategoryApiService by inject()
+    private val transactionDao: TransactionDao by inject()
+    private val budgetDao: BudgetDao by inject()
+    private val recurringTransactionDao: RecurringTransactionDao by inject()
 
     override suspend fun doWork(): Result {
         var allSuccessful = true
@@ -79,10 +85,18 @@ class SyncCategoriesWorker(
                     }
                     if (response.status.value in 200..299) {
                         val responseDto = response.body<CategoryResponseDto>()
-                        categoryDao.deleteCategoryById(category.id)
+                        val oldId = category.id
+                        val newId = responseDto.id
+                        
+                        // Cascade ID updates to other tables
+                        transactionDao.updateTransactionCategoryId(oldId, newId)
+                        budgetDao.updateBudgetCategoryId(oldId, newId)
+                        recurringTransactionDao.updateRecurringTransactionCategoryId(oldId, newId)
+
+                        categoryDao.deleteCategoryById(oldId)
                         categoryDao.insertCategory(
                             CategoryEntity(
-                                id = responseDto.id,
+                                id = newId,
                                 name = responseDto.name,
                                 type = responseDto.type,
                                 parentId = responseDto.parentId,

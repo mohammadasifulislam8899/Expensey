@@ -28,6 +28,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.xentoryx.expensey.core.presentation.components.CrushCanvasDecoration
+import com.xentoryx.expensey.core.presentation.components.CrushOutlinedTextField
+import com.xentoryx.expensey.core.presentation.components.CrushActionButton
 import com.xentoryx.expensey.feature.category.domain.model.Category
 import java.util.Locale
 
@@ -60,43 +63,45 @@ fun CategoriesScreen(
         state.categories.filter { it.type.uppercase(Locale.US) == type }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Manage Categories", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.refreshCategories() }) {
-                        if (state.isLoading) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(imageVector = Icons.Default.Refresh, contentDescription = "Sync Categories")
+    Box(modifier = Modifier.fillMaxSize()) {
+        CrushCanvasDecoration(modifier = Modifier.fillMaxSize())
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Manage Categories", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onBackClick) {
+                            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                    },
+                    actions = {
+                        IconButton(onClick = { viewModel.refreshCategories() }) {
+                            if (state.isLoading) {
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(imageVector = Icons.Default.Refresh, contentDescription = "Sync Categories")
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground
+                    )
                 )
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.openForm(null) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.background,
-                shape = CircleShape
-            ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Add Category")
-            }
-        },
-        modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
+            },
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = { viewModel.openForm(null) },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.background,
+                    shape = CircleShape
+                ) {
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Add Category")
+                }
+            },
+            modifier = modifier.fillMaxSize(),
+            containerColor = Color.Transparent
+        ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -162,6 +167,7 @@ fun CategoriesScreen(
             }
         }
     }
+}
 
     // Category Create/Edit Dialog
     if (state.isFormOpen) {
@@ -273,16 +279,10 @@ fun CategoryFormDialog(
                 )
 
                 // Name Input
-                OutlinedTextField(
+                CrushOutlinedTextField(
                     value = state.name,
                     onValueChange = onNameChange,
-                    label = { Text("Category Name") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                    maxLines = 1
+                    label = "Category Name"
                 )
 
                 // Type selector (only in create mode)
@@ -321,16 +321,20 @@ fun CategoryFormDialog(
                 }
 
                 // Color selector
-                Column {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Select Color", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         presetColors.take(4).forEach { hex ->
                             ColorDot(hex = hex, isSelected = state.color == hex, onClick = { onColorChange(hex) })
                         }
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         presetColors.drop(4).forEach { hex ->
                             ColorDot(hex = hex, isSelected = state.color == hex, onClick = { onColorChange(hex) })
                         }
@@ -363,19 +367,21 @@ fun CategoryFormDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Actions Buttons
-                Row(
-                    horizontalArrangement = Arrangement.End,
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
+                    CrushActionButton(
                         onClick = onSave,
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        enabled = state.name.isNotBlank(),
+                        isLoading = false,
+                        text = "Save Category"
+                    )
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Save", color = MaterialTheme.colorScheme.background)
+                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
                     }
                 }
             }

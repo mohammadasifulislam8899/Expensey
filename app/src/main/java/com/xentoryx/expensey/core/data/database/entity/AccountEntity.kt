@@ -10,5 +10,7 @@ data class AccountEntity(
     val accountType: String,
     val balance: Double,
     val currencyCode: String,
-    val isSynced: Boolean = false
+    val isSynced: Boolean = false,
+    val isNewLocal: Boolean = true,
+    val isDeleted: Boolean = false
 )

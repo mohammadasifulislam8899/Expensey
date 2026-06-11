@@ -48,4 +48,7 @@ interface BudgetDao {
         deleteSyncedBudgets()
         insertBudgets(budgets)
     }
+
+    @Query("UPDATE budgets SET categoryId = :newCategoryId WHERE categoryId = :oldCategoryId")
+    suspend fun updateBudgetCategoryId(oldCategoryId: String, newCategoryId: String)
 }

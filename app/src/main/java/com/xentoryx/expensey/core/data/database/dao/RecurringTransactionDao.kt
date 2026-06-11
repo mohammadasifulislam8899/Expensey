@@ -48,4 +48,7 @@ interface RecurringTransactionDao {
         deleteSyncedRecurringTransactions()
         insertRecurringTransactions(recurringTransactions)
     }
+
+    @Query("UPDATE recurring_transactions SET categoryId = :newCategoryId WHERE categoryId = :oldCategoryId")
+    suspend fun updateRecurringTransactionCategoryId(oldCategoryId: String, newCategoryId: String)
 }

@@ -23,6 +23,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.xentoryx.expensey.core.presentation.components.CrushCanvasDecoration
+import com.xentoryx.expensey.core.presentation.components.CrushOutlinedTextField
+import com.xentoryx.expensey.core.presentation.components.CrushActionButton
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,24 +60,26 @@ fun RecurringFormScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (scheduleId != null) "Edit Schedule" else "Create Schedule", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+    Box(modifier = Modifier.fillMaxSize()) {
+        CrushCanvasDecoration(modifier = Modifier.fillMaxSize())
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(if (scheduleId != null) "Edit Schedule" else "Create Schedule", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onBackClick) {
+                            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground
+                    )
                 )
-            )
-        },
-        modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
+            },
+            modifier = modifier.fillMaxSize(),
+            containerColor = Color.Transparent
+        ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -336,38 +341,24 @@ fun RecurringFormScreen(
             }
 
             // 6. Note Input
-            OutlinedTextField(
+            CrushOutlinedTextField(
                 value = state.note,
                 onValueChange = { viewModel.onNoteChange(it) },
-                label = { Text("Note (Optional)") },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                ),
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 3
+                label = "Note (Optional)"
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             // 7. Save Button
-            Button(
+            CrushActionButton(
                 onClick = { viewModel.saveSchedule() },
                 enabled = !state.isLoading,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-            ) {
-                if (state.isLoading) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.background, modifier = Modifier.size(24.dp))
-                } else {
-                    Text("Save Schedule", color = MaterialTheme.colorScheme.background, fontWeight = FontWeight.Black, fontSize = 16.sp)
-                }
-            }
+                isLoading = state.isLoading,
+                text = "Save Schedule"
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
+}
 }

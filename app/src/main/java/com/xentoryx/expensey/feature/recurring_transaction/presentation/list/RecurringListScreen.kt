@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.xentoryx.expensey.core.presentation.components.CrushCanvasDecoration
 import com.xentoryx.expensey.feature.category.domain.model.Category
 import com.xentoryx.expensey.feature.dashboard.domain.model.AccountSummary
 import com.xentoryx.expensey.feature.recurring_transaction.domain.model.RecurringTransaction
@@ -49,43 +50,45 @@ fun RecurringListScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Recurring Transactions", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.refreshRecurringTransactions() }) {
-                        if (state.isLoading) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(imageVector = Icons.Default.Refresh, contentDescription = "Sync Recurring Transactions")
+    Box(modifier = Modifier.fillMaxSize()) {
+        CrushCanvasDecoration(modifier = Modifier.fillMaxSize())
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Recurring Transactions", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onBackClick) {
+                            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                    },
+                    actions = {
+                        IconButton(onClick = { viewModel.refreshRecurringTransactions() }) {
+                            if (state.isLoading) {
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(imageVector = Icons.Default.Refresh, contentDescription = "Sync Recurring Transactions")
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground
+                    )
                 )
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onAddClick,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.background,
-                shape = CircleShape
-            ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Add Schedule")
-            }
-        },
-        modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
+            },
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = onAddClick,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.background,
+                    shape = CircleShape
+                ) {
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Add Schedule")
+                }
+            },
+            modifier = modifier.fillMaxSize(),
+            containerColor = Color.Transparent
+        ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -129,6 +132,7 @@ fun RecurringListScreen(
             }
         }
     }
+}
 }
 
 @Composable

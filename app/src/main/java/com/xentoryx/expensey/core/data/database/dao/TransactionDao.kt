@@ -35,4 +35,10 @@ interface TransactionDao {
 
     @Query("DELETE FROM transactions")
     suspend fun deleteAllTransactions()
+
+    @Query("UPDATE transactions SET categoryId = :newCategoryId WHERE categoryId = :oldCategoryId")
+    suspend fun updateTransactionCategoryId(oldCategoryId: String, newCategoryId: String)
+
+    @Query("SELECT SUM(amount) FROM transactions WHERE type = :type AND isSynced = 0 AND transactionDate >= :startDate AND transactionDate <= :endDate")
+    suspend fun getUnsyncedTransactionSumByType(type: String, startDate: String, endDate: String): Double?
 }

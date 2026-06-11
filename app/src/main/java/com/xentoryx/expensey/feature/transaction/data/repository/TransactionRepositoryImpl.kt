@@ -7,12 +7,14 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.xentoryx.expensey.core.data.database.dao.AccountDao
+import com.xentoryx.expensey.core.data.database.dao.CategoryDao
 import com.xentoryx.expensey.core.data.database.dao.TransactionDao
 import com.xentoryx.expensey.core.data.database.entity.TransactionEntity
 import com.xentoryx.expensey.core.data.networking.safeCall
 import com.xentoryx.expensey.core.domain.util.DataError
 import com.xentoryx.expensey.core.domain.util.Result
 import com.xentoryx.expensey.core.storage.TokenManager
+import com.xentoryx.expensey.core.sync.SyncCategoriesWorker
 import com.xentoryx.expensey.core.sync.SyncWorker
 import com.xentoryx.expensey.feature.dashboard.data.mapper.toDomain
 import com.xentoryx.expensey.feature.dashboard.data.mapper.toEntity
@@ -36,7 +38,8 @@ class TransactionRepositoryImpl(
     private val transactionDao: TransactionDao,
     private val tokenManager: TokenManager,
     private val apiService: TransactionApiService,
-    private val accountDao: AccountDao
+    private val accountDao: AccountDao,
+    private val categoryDao: CategoryDao
 ) : TransactionRepository {
 
     override suspend fun createTransaction(
@@ -86,6 +89,10 @@ class TransactionRepositoryImpl(
         }
 
         // 3. Launch backend sync asynchronously
+        //    If the selected category is still local-only (not yet synced to backend),
+        //    we skip the immediate sync and rely on the chained WorkManager workers:
+        //    SyncCategoriesWorker -> SyncWorker (transactions)
+        //    This prevents 404 "Category not found" errors from the backend.
         val request = CreateTransactionRequestDto(
             id = transactionId,
             accountId = accountId,
@@ -97,40 +104,57 @@ class TransactionRepositoryImpl(
             transactionDate = transactionDate
         )
 
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                Log.d("TransactionRepository", "Immediate sync: Creating transaction $transactionId on backend...")
-                val networkResult = safeCall<TransactionResponseDto> {
-                    apiService.createTransaction(request)
-                }
-                when (networkResult) {
-                    is Result.Success -> {
-                        transactionDao.markSynced(transactionId)
-                        Log.d("TransactionRepository", "Immediate sync: Transaction $transactionId created successfully on backend.")
+        val isCategoryLocalOnly = try {
+            val cat = categoryDao.getCategoryById(categoryId)
+            cat != null && cat.isNewLocal
+        } catch (_: Exception) { false }
+
+        if (!isCategoryLocalOnly) {
+            // Category is synced — attempt immediate push to backend
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    Log.d("TransactionRepository", "Immediate sync: Creating transaction $transactionId on backend...")
+                    val networkResult = safeCall<TransactionResponseDto> {
+                        apiService.createTransaction(request)
                     }
-                    is Result.Error -> {
-                        val errMsg = when (val err = networkResult.error) {
-                            is DataError.Api -> err.message
-                            is DataError.Network -> "Network Error"
-                            is DataError.EmailNotVerified -> "Email Not Verified"
+                    when (networkResult) {
+                        is Result.Success -> {
+                            transactionDao.markSynced(transactionId)
+                            Log.d("TransactionRepository", "Immediate sync: Transaction $transactionId synced successfully.")
                         }
-                        Log.e("TransactionRepository", "Immediate sync failed for transaction $transactionId: $errMsg")
+                        is Result.Error -> {
+                            val errMsg = when (val err = networkResult.error) {
+                                is DataError.Api -> err.message
+                                is DataError.Network -> "Network Error"
+                                is DataError.EmailNotVerified -> "Email Not Verified"
+                            }
+                            Log.e("TransactionRepository", "Immediate sync failed for $transactionId: $errMsg")
+                        }
                     }
+                } catch (e: Exception) {
+                    Log.e("TransactionRepository", "Immediate sync crashed for $transactionId", e)
                 }
-            } catch (e: Exception) {
-                Log.e("TransactionRepository", "Immediate sync crashed for transaction $transactionId", e)
             }
+        } else {
+            Log.d("TransactionRepository", "Category $categoryId is local-only. Will sync after category sync.")
         }
 
-        // Also enqueue WorkManager for reliability
+        // Enqueue WorkManager workers: SyncCategoriesWorker first, then SyncWorker (transactions)
+        // This guarantees category IDs are valid on the backend before transactions are pushed.
         try {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
-            val syncRequest = OneTimeWorkRequestBuilder<SyncWorker>()
+            val syncCategoriesRequest = OneTimeWorkRequestBuilder<SyncCategoriesWorker>()
                 .setConstraints(constraints)
                 .build()
-            WorkManager.getInstance(context).enqueue(syncRequest)
+            val syncTransactionsRequest = OneTimeWorkRequestBuilder<SyncWorker>()
+                .setConstraints(constraints)
+                .build()
+            WorkManager.getInstance(context)
+                .beginWith(syncCategoriesRequest)
+                .then(syncTransactionsRequest)
+                .enqueue()
         } catch (_: Exception) { }
 
         return Result.Success(entity.toDomain())

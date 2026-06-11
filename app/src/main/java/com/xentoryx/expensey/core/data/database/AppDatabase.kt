@@ -30,7 +30,7 @@ import com.xentoryx.expensey.core.data.database.entity.AttachmentEntity
         RecurringTransactionEntity::class,
         AttachmentEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

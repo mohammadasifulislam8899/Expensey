@@ -51,7 +51,9 @@ class AccountRepositoryImpl(
             accountType = type,
             balance = initialBalance,
             currencyCode = currencyCode,
-            isSynced = false
+            isSynced = false,
+            isNewLocal = true,
+            isDeleted = false
         )
 
         try {
@@ -60,19 +62,7 @@ class AccountRepositoryImpl(
             return Result.Error(DataError.Api("Failed to save account locally"))
         }
 
-        try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-
-            val syncRequest = OneTimeWorkRequestBuilder<SyncAccountsWorker>()
-                .setConstraints(constraints)
-                .build()
-
-            WorkManager.getInstance(context).enqueue(syncRequest)
-        } catch (e: Exception) {
-            // Ignore WorkManager errors
-        }
+        triggerSync()
 
         return Result.Success(entity.toDomain())
     }
@@ -92,7 +82,9 @@ class AccountRepositoryImpl(
                             accountType = dto.type,
                             balance = dto.balance,
                             currencyCode = dto.currencyCode,
-                            isSynced = true
+                            isSynced = true,
+                            isNewLocal = false,
+                            isDeleted = false
                         )
                     }
                     accountDao.replaceAccounts(networkAccounts)
@@ -126,7 +118,9 @@ class AccountRepositoryImpl(
             accountType = type,
             balance = localAccount.balance,
             currencyCode = currencyCode,
-            isSynced = false
+            isSynced = false,
+            isNewLocal = localAccount.isNewLocal,
+            isDeleted = false
         )
 
         try {
@@ -135,36 +129,7 @@ class AccountRepositoryImpl(
             return Result.Error(DataError.Api("Failed to save updated account locally"))
         }
 
-        // Launch backend sync asynchronously
-        val request = CreateAccountRequestDto(
-            id = id,
-            name = name,
-            type = type,
-            initialBalance = localAccount.balance,
-            currencyCode = currencyCode
-        )
-
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val networkResult = safeCall<AccountResponseDto> {
-                    apiService.createAccount(request)
-                }
-                if (networkResult is Result.Success) {
-                    accountDao.markAccountSynced(id)
-                }
-            } catch (_: Exception) { }
-        }
-
-        // Also enqueue WorkManager for sync
-        try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-            val syncRequest = OneTimeWorkRequestBuilder<SyncAccountsWorker>()
-                .setConstraints(constraints)
-                .build()
-            WorkManager.getInstance(context).enqueue(syncRequest)
-        } catch (_: Exception) { }
+        triggerSync()
 
         return Result.Success(entity.toDomain())
     }
@@ -174,21 +139,33 @@ class AccountRepositoryImpl(
             ?: return Result.Success(Unit)
 
         try {
-            accountDao.deleteAccountById(id)
+            if (localAccount.isNewLocal) {
+                accountDao.deleteAccountById(id)
+            } else {
+                accountDao.markAccountDeleted(id)
+            }
         } catch (e: Exception) {
             return Result.Error(DataError.Api("Failed to delete account locally"))
         }
 
-        if (localAccount.isSynced) {
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    safeCall<Unit> {
-                        apiService.deleteAccount(id)
-                    }
-                } catch (_: Exception) { }
-            }
-        }
+        triggerSync()
 
         return Result.Success(Unit)
+    }
+
+    private fun triggerSync() {
+        try {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val syncRequest = OneTimeWorkRequestBuilder<SyncAccountsWorker>()
+                .setConstraints(constraints)
+                .build()
+
+            WorkManager.getInstance(context).enqueue(syncRequest)
+        } catch (e: Exception) {
+            // Ignore WorkManager errors
+        }
     }
 }

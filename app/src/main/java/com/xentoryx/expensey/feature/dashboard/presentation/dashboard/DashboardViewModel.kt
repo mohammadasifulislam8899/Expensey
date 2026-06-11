@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.xentoryx.expensey.core.domain.util.onError
 import com.xentoryx.expensey.core.domain.util.onSuccess
 import com.xentoryx.expensey.feature.dashboard.domain.usecase.GetDashboardUseCase
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,68 +23,65 @@ class DashboardViewModel(
     private val _effects = Channel<DashboardEffect>()
     val effects = _effects.receiveAsFlow()
 
+    private var observerJob: Job? = null
+
     init {
-        loadDashboardSummary()
+        // Subscribe once to the reactive Room-backed flow.
+        // Any local data change (new transaction, balance update) triggers a re-emission.
+        startObserving()
     }
 
     fun onEvent(event: DashboardEvent) {
         when (event) {
-            is DashboardEvent.Refresh -> refresh()
-            is DashboardEvent.LoadSummary -> loadDashboardSummary()
-        }
-    }
-
-    private fun loadDashboardSummary() {
-        viewModelScope.launch {
-            // Show loader only if we don't have any cached data to display
-            val hasCache = state.value.dashboardSummary != null
-            _state.update { it.copy(isLoading = !hasCache, error = null) }
-
-            getDashboardUseCase().collect { result ->
-                result.onSuccess { summary ->
-                    _state.update {
-                        it.copy(
-                            isLoading = false,
-                            isRefreshing = false,
-                            dashboardSummary = summary,
-                            error = null
-                        )
-                    }
-                }.onError { error ->
-                    _state.update {
-                        it.copy(
-                            isLoading = false,
-                            isRefreshing = false,
-                            // Only display screen error if we have nothing in the cache
-                            error = if (state.value.dashboardSummary == null) error else null
-                        )
-                    }
-                    _effects.send(DashboardEffect.ShowError(error))
-                }
+            is DashboardEvent.Refresh -> {
+                // Re-start observation — this triggers onStart{} in the repository,
+                // which fetches fresh data from the network and saves to Room.
+                // The Room Flows then auto-emit the updated values.
+                _state.update { it.copy(isRefreshing = true, error = null) }
+                startObserving()
             }
+            is DashboardEvent.LoadSummary -> startObserving()
         }
     }
 
-    private fun refresh() {
-        viewModelScope.launch {
-            _state.update { it.copy(isRefreshing = true, error = null) }
+    /**
+     * Subscribe to the reactive dashboard Flow.
+     * The repository's Flow uses Room Flows + onStart{} network fetch.
+     * Any local DB change triggers a re-emit here automatically.
+     */
+    private fun startObserving() {
+        observerJob?.cancel()
+        observerJob = viewModelScope.launch {
+            val hasCache = state.value.dashboardSummary != null
+            if (!hasCache) {
+                _state.update { it.copy(isLoading = true, error = null) }
+            }
+
             getDashboardUseCase().collect { result ->
-                result.onSuccess { summary ->
-                    _state.update {
-                        it.copy(
-                            isRefreshing = false,
-                            dashboardSummary = summary,
-                            error = null
-                        )
+                result
+                    .onSuccess { summary ->
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                isRefreshing = false,
+                                dashboardSummary = summary,
+                                error = null
+                            )
+                        }
                     }
-                }.onError { error ->
-                    _state.update {
-                        it.copy(
-                            isRefreshing = false
-                        )
+                    .onError { error ->
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                isRefreshing = false,
+                                // Only show error if there's no cached data to display
+                                error = if (state.value.dashboardSummary == null) error else null
+                            )
+                        }
+                        viewModelScope.launch {
+                            _effects.send(DashboardEffect.ShowError(error))
+                        }
                     }
-                    _effects.send(DashboardEffect.ShowError(error))
-                }
             }
         }
     }

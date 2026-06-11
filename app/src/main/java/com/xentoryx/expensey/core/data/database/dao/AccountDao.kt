@@ -10,10 +10,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AccountDao {
-    @Query("SELECT * FROM accounts")
+    @Query("SELECT * FROM accounts WHERE isDeleted = 0")
     fun getAccountsFlow(): Flow<List<AccountEntity>>
 
-    @Query("SELECT * FROM accounts")
+    @Query("SELECT * FROM accounts WHERE isDeleted = 0")
     suspend fun getAccounts(): List<AccountEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -22,8 +22,14 @@ interface AccountDao {
     @Query("DELETE FROM accounts")
     suspend fun deleteAllAccounts()
 
-    @Query("SELECT * FROM accounts WHERE isSynced = 0")
+    @Query("SELECT * FROM accounts WHERE isSynced = 0 AND isDeleted = 0")
     suspend fun getUnsyncedAccounts(): List<AccountEntity>
+
+    @Query("SELECT * FROM accounts WHERE isDeleted = 1")
+    suspend fun getUnsyncedDeletions(): List<AccountEntity>
+
+    @Query("UPDATE accounts SET isDeleted = 1, isSynced = 0 WHERE accountId = :accountId")
+    suspend fun markAccountDeleted(accountId: String)
 
     @Query("UPDATE accounts SET isSynced = 1 WHERE accountId = :accountId")
     suspend fun markAccountSynced(accountId: String)
@@ -31,7 +37,7 @@ interface AccountDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAccount(account: AccountEntity)
 
-    @Query("SELECT * FROM accounts WHERE accountId = :accountId")
+    @Query("SELECT * FROM accounts WHERE accountId = :accountId AND isDeleted = 0")
     suspend fun getAccountById(accountId: String): AccountEntity?
 
     @Query("DELETE FROM accounts WHERE accountId = :accountId")
@@ -40,7 +46,7 @@ interface AccountDao {
     @Query("UPDATE accounts SET balance = balance + :amount WHERE accountId = :accountId")
     suspend fun adjustBalance(accountId: String, amount: Double)
 
-    @Query("DELETE FROM accounts WHERE isSynced = 1")
+    @Query("DELETE FROM accounts WHERE isSynced = 1 AND isDeleted = 0")
     suspend fun deleteSyncedAccounts()
 
     @Transaction
