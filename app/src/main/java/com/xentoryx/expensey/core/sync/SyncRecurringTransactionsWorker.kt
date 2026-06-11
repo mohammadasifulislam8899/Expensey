@@ -9,6 +9,7 @@ import com.xentoryx.expensey.feature.recurring_transaction.data.remote.api.Recur
 import com.xentoryx.expensey.feature.recurring_transaction.data.remote.dto.CreateRecurringTransactionRequestDto
 import com.xentoryx.expensey.feature.recurring_transaction.data.remote.dto.UpdateRecurringTransactionRequestDto
 import com.xentoryx.expensey.feature.recurring_transaction.data.remote.dto.RecurringTransactionResponseDto
+import com.xentoryx.expensey.core.data.networking.tryToRefreshToken
 import io.ktor.client.call.body
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -37,7 +38,12 @@ class SyncRecurringTransactionsWorker(
                     // Created and deleted offline, never reached server
                     recurringDao.deleteRecurringTransactionById(recurring.id)
                 } else {
-                    val response = apiService.deleteRecurringTransaction(recurring.id)
+                    var response = apiService.deleteRecurringTransaction(recurring.id)
+                    if (response.status.value == 401) {
+                        if (tryToRefreshToken()) {
+                            response = apiService.deleteRecurringTransaction(recurring.id)
+                        }
+                    }
                     if (response.status.value in 200..299 || response.status.value == 404) {
                         recurringDao.deleteRecurringTransactionById(recurring.id)
                     } else {
@@ -69,7 +75,12 @@ class SyncRecurringTransactionsWorker(
                         startDate = recurring.startDate.ifBlank { null },
                         endDate = recurring.endDate?.ifBlank { null }
                     )
-                    val response = apiService.createRecurringTransaction(request)
+                    var response = apiService.createRecurringTransaction(request)
+                    if (response.status.value == 401) {
+                        if (tryToRefreshToken()) {
+                            response = apiService.createRecurringTransaction(request)
+                        }
+                    }
                     if (response.status.value in 200..299) {
                         val responseDto = response.body<RecurringTransactionResponseDto>()
                         recurringDao.deleteRecurringTransactionById(recurring.id)
@@ -106,7 +117,12 @@ class SyncRecurringTransactionsWorker(
                         startDate = recurring.startDate.ifBlank { null },
                         endDate = recurring.endDate?.ifBlank { null }
                     )
-                    val response = apiService.updateRecurringTransaction(recurring.id, request)
+                    var response = apiService.updateRecurringTransaction(recurring.id, request)
+                    if (response.status.value == 401) {
+                        if (tryToRefreshToken()) {
+                            response = apiService.updateRecurringTransaction(recurring.id, request)
+                        }
+                    }
                     if (response.status.value in 200..299) {
                         val responseDto = response.body<RecurringTransactionResponseDto>()
                         recurringDao.insertRecurringTransaction(

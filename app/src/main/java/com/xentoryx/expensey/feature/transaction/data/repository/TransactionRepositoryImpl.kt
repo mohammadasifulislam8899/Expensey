@@ -1,6 +1,7 @@
 package com.xentoryx.expensey.feature.transaction.data.repository
 
 import android.content.Context
+import android.util.Log
 import androidx.work.Constraints
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
@@ -98,13 +99,27 @@ class TransactionRepositoryImpl(
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                Log.d("TransactionRepository", "Immediate sync: Creating transaction $transactionId on backend...")
                 val networkResult = safeCall<TransactionResponseDto> {
                     apiService.createTransaction(request)
                 }
-                if (networkResult is Result.Success) {
-                    transactionDao.markSynced(transactionId)
+                when (networkResult) {
+                    is Result.Success -> {
+                        transactionDao.markSynced(transactionId)
+                        Log.d("TransactionRepository", "Immediate sync: Transaction $transactionId created successfully on backend.")
+                    }
+                    is Result.Error -> {
+                        val errMsg = when (val err = networkResult.error) {
+                            is DataError.Api -> err.message
+                            is DataError.Network -> "Network Error"
+                            is DataError.EmailNotVerified -> "Email Not Verified"
+                        }
+                        Log.e("TransactionRepository", "Immediate sync failed for transaction $transactionId: $errMsg")
+                    }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                Log.e("TransactionRepository", "Immediate sync crashed for transaction $transactionId", e)
+            }
         }
 
         // Also enqueue WorkManager for reliability
@@ -223,13 +238,27 @@ class TransactionRepositoryImpl(
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                Log.d("TransactionRepository", "Immediate sync: Updating transaction $id on backend...")
                 val networkResult = safeCall<TransactionResponseDto> {
                     apiService.updateTransaction(id, request)
                 }
-                if (networkResult is Result.Success) {
-                    transactionDao.markSynced(id)
+                when (networkResult) {
+                    is Result.Success -> {
+                        transactionDao.markSynced(id)
+                        Log.d("TransactionRepository", "Immediate sync: Transaction $id updated successfully on backend.")
+                    }
+                    is Result.Error -> {
+                        val errMsg = when (val err = networkResult.error) {
+                            is DataError.Api -> err.message
+                            is DataError.Network -> "Network Error"
+                            is DataError.EmailNotVerified -> "Email Not Verified"
+                        }
+                        Log.e("TransactionRepository", "Immediate sync failed for update of transaction $id: $errMsg")
+                    }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                Log.e("TransactionRepository", "Immediate sync crashed for update of transaction $id", e)
+            }
         }
 
         // Enqueue WorkManager for reliability

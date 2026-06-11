@@ -9,6 +9,7 @@ import com.xentoryx.expensey.feature.budget.data.remote.api.BudgetApiService
 import com.xentoryx.expensey.feature.budget.data.remote.dto.CreateBudgetRequestDto
 import com.xentoryx.expensey.feature.budget.data.remote.dto.UpdateBudgetRequestDto
 import com.xentoryx.expensey.feature.budget.data.remote.dto.BudgetResponseDto
+import com.xentoryx.expensey.core.data.networking.tryToRefreshToken
 import io.ktor.client.call.body
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -37,7 +38,12 @@ class SyncBudgetsWorker(
                     // Created and deleted offline, never reached server
                     budgetDao.deleteBudgetById(budget.id)
                 } else {
-                    val response = apiService.deleteBudget(budget.id)
+                    var response = apiService.deleteBudget(budget.id)
+                    if (response.status.value == 401) {
+                        if (tryToRefreshToken()) {
+                            response = apiService.deleteBudget(budget.id)
+                        }
+                    }
                     if (response.status.value in 200..299 || response.status.value == 404) {
                         budgetDao.deleteBudgetById(budget.id)
                     } else {
@@ -66,7 +72,12 @@ class SyncBudgetsWorker(
                         startDate = budget.startDate.ifBlank { null },
                         endDate = budget.endDate.ifBlank { null }
                     )
-                    val response = apiService.createBudget(request)
+                    var response = apiService.createBudget(request)
+                    if (response.status.value == 401) {
+                        if (tryToRefreshToken()) {
+                            response = apiService.createBudget(request)
+                        }
+                    }
                     if (response.status.value in 200..299) {
                         val responseDto = response.body<BudgetResponseDto>()
                         budgetDao.deleteBudgetById(budget.id)
@@ -100,7 +111,12 @@ class SyncBudgetsWorker(
                         startDate = budget.startDate.ifBlank { null },
                         endDate = budget.endDate.ifBlank { null }
                     )
-                    val response = apiService.updateBudget(budget.id, request)
+                    var response = apiService.updateBudget(budget.id, request)
+                    if (response.status.value == 401) {
+                        if (tryToRefreshToken()) {
+                            response = apiService.updateBudget(budget.id, request)
+                        }
+                    }
                     if (response.status.value in 200..299) {
                         val responseDto = response.body<BudgetResponseDto>()
                         budgetDao.insertBudget(

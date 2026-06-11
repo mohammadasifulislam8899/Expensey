@@ -9,6 +9,7 @@ import com.xentoryx.expensey.feature.category.data.remote.api.CategoryApiService
 import com.xentoryx.expensey.feature.category.data.remote.dto.CategoryResponseDto
 import com.xentoryx.expensey.feature.category.data.remote.dto.CreateCategoryRequestDto
 import com.xentoryx.expensey.feature.category.data.remote.dto.UpdateCategoryRequestDto
+import com.xentoryx.expensey.core.data.networking.tryToRefreshToken
 import io.ktor.client.call.body
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -36,7 +37,12 @@ class SyncCategoriesWorker(
                 if (category.isNewLocal) {
                     categoryDao.deleteCategoryById(category.id)
                 } else {
-                    val response = apiService.deleteCategory(category.id)
+                    var response = apiService.deleteCategory(category.id)
+                    if (response.status.value == 401) {
+                        if (tryToRefreshToken()) {
+                            response = apiService.deleteCategory(category.id)
+                        }
+                    }
                     if (response.status.value in 200..299 || response.status.value == 404) {
                         categoryDao.deleteCategoryById(category.id)
                     } else {
@@ -65,7 +71,12 @@ class SyncCategoriesWorker(
                         icon = category.icon,
                         color = category.color
                     )
-                    val response = apiService.createCategory(request)
+                    var response = apiService.createCategory(request)
+                    if (response.status.value == 401) {
+                        if (tryToRefreshToken()) {
+                            response = apiService.createCategory(request)
+                        }
+                    }
                     if (response.status.value in 200..299) {
                         val responseDto = response.body<CategoryResponseDto>()
                         categoryDao.deleteCategoryById(category.id)
@@ -92,7 +103,12 @@ class SyncCategoriesWorker(
                         icon = category.icon,
                         color = category.color
                     )
-                    val response = apiService.updateCategory(category.id, request)
+                    var response = apiService.updateCategory(category.id, request)
+                    if (response.status.value == 401) {
+                        if (tryToRefreshToken()) {
+                            response = apiService.updateCategory(category.id, request)
+                        }
+                    }
                     if (response.status.value in 200..299) {
                         val responseDto = response.body<CategoryResponseDto>()
                         categoryDao.insertCategory(

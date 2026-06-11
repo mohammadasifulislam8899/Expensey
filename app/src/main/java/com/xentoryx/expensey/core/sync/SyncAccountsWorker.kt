@@ -6,6 +6,7 @@ import androidx.work.WorkerParameters
 import com.xentoryx.expensey.core.data.database.dao.AccountDao
 import com.xentoryx.expensey.feature.accounts.data.remote.api.AccountApiService
 import com.xentoryx.expensey.feature.accounts.data.remote.dto.CreateAccountRequestDto
+import com.xentoryx.expensey.core.data.networking.tryToRefreshToken
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -39,7 +40,12 @@ class SyncAccountsWorker(
                     initialBalance = account.balance,
                     currencyCode = account.currencyCode
                 )
-                val response = apiService.createAccount(request)
+                var response = apiService.createAccount(request)
+                if (response.status.value == 401) {
+                    if (tryToRefreshToken()) {
+                        response = apiService.createAccount(request)
+                    }
+                }
                 if (response.status.value in 200..299) {
                     accountDao.markAccountSynced(account.accountId)
                 } else {
