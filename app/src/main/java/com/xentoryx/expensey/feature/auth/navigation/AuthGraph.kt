@@ -37,7 +37,7 @@ fun NavGraphBuilder.authNavGraph(
                 onNavigateToLogin = { navController.popBackStack() },
                 onNavigateToVerifyEmail = { userId, email ->
                     navController.navigate(VerifyEmailRoute(userId, email)) {
-                        popUpTo<RegisterRoute> { inclusive = true }
+                        popUpTo<LoginRoute> { inclusive = false }
                     }
                 }
             )
