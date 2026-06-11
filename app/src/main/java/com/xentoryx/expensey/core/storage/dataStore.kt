@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
@@ -48,7 +49,7 @@ class TokenManager(private val context: Context) {
 
     val isLoggedIn: Flow<Boolean> = context.dataStore.data.map { prefs ->
         !prefs[ACCESS_TOKEN_KEY].isNullOrEmpty()
-    }
+    }.distinctUntilChanged()
 
     suspend fun saveThemeMode(mode: String) {
         context.dataStore.edit { prefs ->

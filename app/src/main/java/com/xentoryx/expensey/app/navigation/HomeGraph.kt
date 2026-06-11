@@ -73,8 +73,9 @@ fun RootNavigation(
             } else {
                 isBiometricVerified = true
                 val currentRoute = navController.currentBackStackEntry?.destination?.route
+                val parentRoute = navController.currentBackStackEntry?.destination?.parent?.route
                 val authRouteName = AuthGraphRoute::class.qualifiedName
-                if (currentRoute != null && currentRoute != authRouteName) {
+                if (currentRoute != null && currentRoute != authRouteName && parentRoute != authRouteName) {
                     navController.navigate(AuthGraphRoute) {
                         popUpTo(0) { inclusive = true }
                     }
