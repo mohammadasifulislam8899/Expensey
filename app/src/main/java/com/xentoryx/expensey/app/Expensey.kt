@@ -1,7 +1,6 @@
 package com.xentoryx.expensey.app
 
 import android.app.Application
-import com.xentoryx.expensey.core.di.databaseModule
 import com.xentoryx.expensey.core.di.networkModule
 import com.xentoryx.expensey.feature.accounts.di.accountsModule
 import com.xentoryx.expensey.feature.auth.di.authModule
@@ -14,14 +13,13 @@ import com.xentoryx.expensey.feature.transaction.di.transactionModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.GlobalContext.startKoin
 
-class Expensey: Application() {
+class Expensey : Application() {
     override fun onCreate() {
         super.onCreate()
         startKoin {
             androidContext(this@Expensey)
             modules(
                 networkModule,
-                databaseModule,
                 authModule,
                 dashboardModule,
                 transactionModule,

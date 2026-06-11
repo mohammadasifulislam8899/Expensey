@@ -1,23 +1,8 @@
 package com.xentoryx.expensey.feature.transaction.data.repository
 
-import android.content.Context
-import android.util.Log
-import androidx.work.Constraints
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import com.xentoryx.expensey.core.data.database.dao.AccountDao
-import com.xentoryx.expensey.core.data.database.dao.CategoryDao
-import com.xentoryx.expensey.core.data.database.dao.TransactionDao
-import com.xentoryx.expensey.core.data.database.entity.TransactionEntity
 import com.xentoryx.expensey.core.data.networking.safeCall
 import com.xentoryx.expensey.core.domain.util.DataError
 import com.xentoryx.expensey.core.domain.util.Result
-import com.xentoryx.expensey.core.storage.TokenManager
-import com.xentoryx.expensey.core.sync.SyncCategoriesWorker
-import com.xentoryx.expensey.core.sync.SyncWorker
-import com.xentoryx.expensey.feature.dashboard.data.mapper.toDomain
-import com.xentoryx.expensey.feature.dashboard.data.mapper.toEntity
 import com.xentoryx.expensey.feature.dashboard.domain.model.Transaction
 import com.xentoryx.expensey.feature.transaction.data.remote.api.TransactionApiService
 import com.xentoryx.expensey.feature.transaction.data.remote.dto.CreateTransactionRequestDto
@@ -25,22 +10,17 @@ import com.xentoryx.expensey.feature.transaction.data.remote.dto.TransactionList
 import com.xentoryx.expensey.feature.transaction.data.remote.dto.UpdateTransactionRequestDto
 import com.xentoryx.expensey.feature.dashboard.data.remote.dto.TransactionResponseDto
 import com.xentoryx.expensey.feature.transaction.domain.repository.TransactionRepository
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
-import java.time.Instant
-import java.util.UUID
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class TransactionRepositoryImpl(
-    private val context: Context,
-    private val transactionDao: TransactionDao,
-    private val tokenManager: TokenManager,
-    private val apiService: TransactionApiService,
-    private val accountDao: AccountDao,
-    private val categoryDao: CategoryDao
+    private val apiService: TransactionApiService
 ) : TransactionRepository {
+
+    private val _transactionsFlow = MutableStateFlow<List<Transaction>>(emptyList())
+
+    override fun getTransactionsFlow(): Flow<List<Transaction>> = _transactionsFlow.asStateFlow()
 
     override suspend fun createTransaction(
         accountId: String,
@@ -51,144 +31,31 @@ class TransactionRepositoryImpl(
         note: String?,
         transactionDate: String
     ): Result<Transaction, DataError> {
-        val userId = tokenManager.getUserId()
-            ?: return Result.Error(DataError.Api("Unauthorized"))
-
-        val transactionId = UUID.randomUUID().toString()
-        val now = Instant.now().toString()
-
-        val entity = TransactionEntity(
-            id = transactionId,
-            userId = userId,
-            accountId = accountId,
-            categoryId = categoryId,
-            transferToAccountId = transferToAccountId,
-            amount = amount,
-            type = type,
-            note = note,
-            transactionDate = transactionDate,
-            createdAt = now,
-            isSynced = false
-        )
-
-        try {
-            // 1. Insert transaction locally
-            transactionDao.insertTransaction(entity)
-
-            // 2. Adjust local account balance(s)
-            when (type) {
-                "INCOME" -> accountDao.adjustBalance(accountId, amount)
-                "EXPENSE" -> accountDao.adjustBalance(accountId, -amount)
-                "TRANSFER" -> {
-                    accountDao.adjustBalance(accountId, -amount)
-                    transferToAccountId?.let { accountDao.adjustBalance(it, amount) }
-                }
-            }
-        } catch (e: Exception) {
-            return Result.Error(DataError.Api("Failed to save transaction locally"))
+        val result = safeCall<TransactionResponseDto> {
+            apiService.createTransaction(
+                CreateTransactionRequestDto(
+                    accountId = accountId,
+                    categoryId = categoryId,
+                    transferToAccountId = transferToAccountId,
+                    amount = amount,
+                    type = type,
+                    note = note,
+                    transactionDate = transactionDate
+                )
+            )
         }
-
-        // 3. Launch backend sync asynchronously
-        //    If the selected category is still local-only (not yet synced to backend),
-        //    we skip the immediate sync and rely on the chained WorkManager workers:
-        //    SyncCategoriesWorker -> SyncWorker (transactions)
-        //    This prevents 404 "Category not found" errors from the backend.
-        val request = CreateTransactionRequestDto(
-            id = transactionId,
-            accountId = accountId,
-            categoryId = categoryId,
-            transferToAccountId = transferToAccountId,
-            amount = amount,
-            type = type,
-            note = note,
-            transactionDate = transactionDate
-        )
-
-        val isCategoryLocalOnly = try {
-            val cat = categoryDao.getCategoryById(categoryId)
-            cat != null && cat.isNewLocal
-        } catch (_: Exception) { false }
-
-        if (!isCategoryLocalOnly) {
-            // Category is synced — attempt immediate push to backend
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    Log.d("TransactionRepository", "Immediate sync: Creating transaction $transactionId on backend...")
-                    val networkResult = safeCall<TransactionResponseDto> {
-                        apiService.createTransaction(request)
-                    }
-                    when (networkResult) {
-                        is Result.Success -> {
-                            transactionDao.markSynced(transactionId)
-                            Log.d("TransactionRepository", "Immediate sync: Transaction $transactionId synced successfully.")
-                        }
-                        is Result.Error -> {
-                            val errMsg = when (val err = networkResult.error) {
-                                is DataError.Api -> err.message
-                                is DataError.Network -> "Network Error"
-                                is DataError.EmailNotVerified -> "Email Not Verified"
-                            }
-                            Log.e("TransactionRepository", "Immediate sync failed for $transactionId: $errMsg")
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("TransactionRepository", "Immediate sync crashed for $transactionId", e)
-                }
-            }
-        } else {
-            Log.d("TransactionRepository", "Category $categoryId is local-only. Will sync after category sync.")
-        }
-
-        // Enqueue WorkManager workers: SyncCategoriesWorker first, then SyncWorker (transactions)
-        // This guarantees category IDs are valid on the backend before transactions are pushed.
-        try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-            val syncCategoriesRequest = OneTimeWorkRequestBuilder<SyncCategoriesWorker>()
-                .setConstraints(constraints)
-                .build()
-            val syncTransactionsRequest = OneTimeWorkRequestBuilder<SyncWorker>()
-                .setConstraints(constraints)
-                .build()
-            WorkManager.getInstance(context)
-                .beginWith(syncCategoriesRequest)
-                .then(syncTransactionsRequest)
-                .enqueue()
-        } catch (_: Exception) { }
-
-        return Result.Success(entity.toDomain())
-    }
-
-    override fun getTransactionsFlow(): Flow<List<Transaction>> {
-        return transactionDao.getRecentTransactionsFlow().map { entities ->
-            entities.map { it.toDomain() }
-        }
-    }
-
-    override suspend fun syncTransactions(page: Int, limit: Int): Result<Unit, DataError> {
-        val responseResult = safeCall<TransactionListResponseDto> {
-            apiService.getTransactions(page, limit)
-        }
-
-        return when (responseResult) {
+        return when (result) {
             is Result.Success -> {
-                try {
-                    val networkTransactions = responseResult.data.data
-                    transactionDao.insertTransactions(networkTransactions.map { it.toEntity(isSynced = true) })
-                    Result.Success(Unit)
-                } catch (e: Exception) {
-                    Result.Error(DataError.Api("Failed to save synced transactions locally"))
-                }
+                val tx = result.data.toDomain()
+                _transactionsFlow.value = listOf(tx) + _transactionsFlow.value
+                Result.Success(tx)
             }
-            is Result.Error -> {
-                Result.Error(responseResult.error)
-            }
+            is Result.Error -> result
         }
     }
 
     override suspend fun getTransactionById(id: String): Transaction? {
-        return transactionDao.getTransactionById(id)?.toDomain()
+        return _transactionsFlow.value.find { it.id == id }
     }
 
     override suspend fun updateTransaction(
@@ -201,137 +68,62 @@ class TransactionRepositoryImpl(
         note: String?,
         transactionDate: String
     ): Result<Transaction, DataError> {
-        val localTx = transactionDao.getTransactionById(id)
-            ?: return Result.Error(DataError.Api("Transaction not found locally"))
-
-        val userId = tokenManager.getUserId()
-            ?: return Result.Error(DataError.Api("Unauthorized"))
-
-        val updatedEntity = TransactionEntity(
-            id = id,
-            userId = userId,
-            accountId = accountId,
-            categoryId = categoryId,
-            transferToAccountId = transferToAccountId,
-            amount = amount,
-            type = type,
-            note = note,
-            transactionDate = transactionDate,
-            createdAt = localTx.createdAt,
-            isSynced = false
-        )
-
-        try {
-            // 1. Reverse old local balance adjustment
-            val oldAmount = localTx.amount
-            when (localTx.type) {
-                "INCOME" -> accountDao.adjustBalance(localTx.accountId, -oldAmount)
-                "EXPENSE" -> accountDao.adjustBalance(localTx.accountId, oldAmount)
-                "TRANSFER" -> {
-                    accountDao.adjustBalance(localTx.accountId, oldAmount)
-                    localTx.transferToAccountId?.let { accountDao.adjustBalance(it, -oldAmount) }
-                }
-            }
-
-            // 2. Apply new local balance adjustment
-            when (type) {
-                "INCOME" -> accountDao.adjustBalance(accountId, amount)
-                "EXPENSE" -> accountDao.adjustBalance(accountId, -amount)
-                "TRANSFER" -> {
-                    accountDao.adjustBalance(accountId, -amount)
-                    transferToAccountId?.let { accountDao.adjustBalance(it, amount) }
-                }
-            }
-
-            // 3. Save updated transaction locally
-            transactionDao.insertTransaction(updatedEntity)
-        } catch (e: Exception) {
-            return Result.Error(DataError.Api("Failed to save updated transaction locally"))
+        val result = safeCall<TransactionResponseDto> {
+            apiService.updateTransaction(
+                id,
+                UpdateTransactionRequestDto(
+                    accountId = accountId,
+                    categoryId = categoryId,
+                    transferToAccountId = transferToAccountId,
+                    amount = amount,
+                    type = type,
+                    note = note,
+                    transactionDate = transactionDate
+                )
+            )
         }
-
-        // 4. Launch backend sync asynchronously
-        val request = UpdateTransactionRequestDto(
-            accountId = accountId,
-            categoryId = categoryId,
-            transferToAccountId = transferToAccountId,
-            amount = amount,
-            type = type,
-            note = note,
-            transactionDate = transactionDate
-        )
-
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                Log.d("TransactionRepository", "Immediate sync: Updating transaction $id on backend...")
-                val networkResult = safeCall<TransactionResponseDto> {
-                    apiService.updateTransaction(id, request)
-                }
-                when (networkResult) {
-                    is Result.Success -> {
-                        transactionDao.markSynced(id)
-                        Log.d("TransactionRepository", "Immediate sync: Transaction $id updated successfully on backend.")
-                    }
-                    is Result.Error -> {
-                        val errMsg = when (val err = networkResult.error) {
-                            is DataError.Api -> err.message
-                            is DataError.Network -> "Network Error"
-                            is DataError.EmailNotVerified -> "Email Not Verified"
-                        }
-                        Log.e("TransactionRepository", "Immediate sync failed for update of transaction $id: $errMsg")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("TransactionRepository", "Immediate sync crashed for update of transaction $id", e)
+        return when (result) {
+            is Result.Success -> {
+                val updated = result.data.toDomain()
+                _transactionsFlow.value = _transactionsFlow.value.map { if (it.id == id) updated else it }
+                Result.Success(updated)
             }
+            is Result.Error -> result
         }
-
-        // Enqueue WorkManager for reliability
-        try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-            val syncRequest = OneTimeWorkRequestBuilder<SyncWorker>()
-                .setConstraints(constraints)
-                .build()
-            WorkManager.getInstance(context).enqueue(syncRequest)
-        } catch (_: Exception) { }
-
-        return Result.Success(updatedEntity.toDomain())
     }
 
     override suspend fun deleteTransaction(id: String): Result<Unit, DataError> {
-        val localTx = transactionDao.getTransactionById(id)
-            ?: return Result.Success(Unit)
-
-        try {
-            // 1. Delete locally
-            transactionDao.deleteTransactionById(id)
-
-            // 2. Reverse local balance adjustment
-            val amount = localTx.amount
-            when (localTx.type) {
-                "INCOME" -> accountDao.adjustBalance(localTx.accountId, -amount)
-                "EXPENSE" -> accountDao.adjustBalance(localTx.accountId, amount)
-                "TRANSFER" -> {
-                    accountDao.adjustBalance(localTx.accountId, amount)
-                    localTx.transferToAccountId?.let { accountDao.adjustBalance(it, -amount) }
-                }
+        val result = safeCall<Unit> { apiService.deleteTransaction(id) }
+        return when (result) {
+            is Result.Success -> {
+                _transactionsFlow.value = _transactionsFlow.value.filter { it.id != id }
+                Result.Success(Unit)
             }
-        } catch (e: Exception) {
-            return Result.Error(DataError.Api("Failed to delete transaction locally"))
+            is Result.Error -> result
         }
+    }
 
-        // 3. Call backend delete asynchronously if it was previously synced
-        if (localTx.isSynced) {
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    safeCall<Unit> {
-                        apiService.deleteTransaction(id)
-                    }
-                } catch (_: Exception) { }
+    override suspend fun syncTransactions(page: Int, limit: Int): Result<Unit, DataError> {
+        val result = safeCall<TransactionListResponseDto> { apiService.getTransactions(page, limit) }
+        return when (result) {
+            is Result.Success -> {
+                _transactionsFlow.value = result.data.data.map { it.toDomain() }
+                Result.Success(Unit)
             }
+            is Result.Error -> result
         }
-
-        return Result.Success(Unit)
     }
 }
+
+fun TransactionResponseDto.toDomain() = Transaction(
+    id = id,
+    userId = userId,
+    accountId = accountId,
+    categoryId = categoryId,
+    transferToAccountId = transferToAccountId,
+    amount = amount,
+    type = type,
+    note = note,
+    transactionDate = transactionDate,
+    createdAt = createdAt
+)

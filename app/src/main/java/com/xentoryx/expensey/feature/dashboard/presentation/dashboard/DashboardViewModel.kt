@@ -23,40 +23,28 @@ class DashboardViewModel(
     private val _effects = Channel<DashboardEffect>()
     val effects = _effects.receiveAsFlow()
 
-    private var observerJob: Job? = null
+    private var loadJob: Job? = null
 
     init {
-        // Subscribe once to the reactive Room-backed flow.
-        // Any local data change (new transaction, balance update) triggers a re-emission.
-        startObserving()
+        loadDashboard()
     }
 
     fun onEvent(event: DashboardEvent) {
         when (event) {
             is DashboardEvent.Refresh -> {
-                // Re-start observation — this triggers onStart{} in the repository,
-                // which fetches fresh data from the network and saves to Room.
-                // The Room Flows then auto-emit the updated values.
-                _state.update { it.copy(isRefreshing = true, error = null) }
-                startObserving()
+                _state.update { it.copy(isRefreshing = true) }
+                loadDashboard()
             }
-            is DashboardEvent.LoadSummary -> startObserving()
+            is DashboardEvent.LoadSummary -> loadDashboard()
         }
     }
 
-    /**
-     * Subscribe to the reactive dashboard Flow.
-     * The repository's Flow uses Room Flows + onStart{} network fetch.
-     * Any local DB change triggers a re-emit here automatically.
-     */
-    private fun startObserving() {
-        observerJob?.cancel()
-        observerJob = viewModelScope.launch {
-            val hasCache = state.value.dashboardSummary != null
-            if (!hasCache) {
+    private fun loadDashboard() {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            if (_state.value.dashboardSummary == null) {
                 _state.update { it.copy(isLoading = true, error = null) }
             }
-
             getDashboardUseCase().collect { result ->
                 result
                     .onSuccess { summary ->
@@ -74,13 +62,10 @@ class DashboardViewModel(
                             it.copy(
                                 isLoading = false,
                                 isRefreshing = false,
-                                // Only show error if there's no cached data to display
-                                error = if (state.value.dashboardSummary == null) error else null
+                                error = error
                             )
                         }
-                        viewModelScope.launch {
-                            _effects.send(DashboardEffect.ShowError(error))
-                        }
+                        _effects.send(DashboardEffect.ShowError(error))
                     }
             }
         }

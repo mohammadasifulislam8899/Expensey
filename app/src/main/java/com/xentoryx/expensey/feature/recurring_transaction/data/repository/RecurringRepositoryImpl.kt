@@ -1,37 +1,26 @@
 package com.xentoryx.expensey.feature.recurring_transaction.data.repository
 
-import android.content.Context
-import androidx.work.Constraints
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import com.xentoryx.expensey.core.data.database.dao.RecurringTransactionDao
-import com.xentoryx.expensey.core.data.database.entity.RecurringTransactionEntity
 import com.xentoryx.expensey.core.data.networking.safeCall
 import com.xentoryx.expensey.core.domain.util.DataError
 import com.xentoryx.expensey.core.domain.util.Result
-import com.xentoryx.expensey.core.sync.SyncRecurringTransactionsWorker
 import com.xentoryx.expensey.feature.recurring_transaction.data.remote.api.RecurringApiService
+import com.xentoryx.expensey.feature.recurring_transaction.data.remote.dto.CreateRecurringTransactionRequestDto
 import com.xentoryx.expensey.feature.recurring_transaction.data.remote.dto.RecurringTransactionResponseDto
+import com.xentoryx.expensey.feature.recurring_transaction.data.remote.dto.UpdateRecurringTransactionRequestDto
 import com.xentoryx.expensey.feature.recurring_transaction.domain.model.RecurringTransaction
 import com.xentoryx.expensey.feature.recurring_transaction.domain.repository.RecurringRepository
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.time.LocalDate
-import java.time.LocalDateTime
-import java.util.UUID
 
 class RecurringRepositoryImpl(
-    private val context: Context,
-    private val recurringDao: RecurringTransactionDao,
     private val apiService: RecurringApiService
 ) : RecurringRepository {
 
-    override fun getRecurringTransactionsFlow(): Flow<List<RecurringTransaction>> {
-        return recurringDao.getRecurringTransactionsFlow().map { entities ->
-            entities.map { it.toDomain() }
-        }
-    }
+    private val _recurringFlow = MutableStateFlow<List<RecurringTransaction>>(emptyList())
+
+    override fun getRecurringTransactionsFlow(): Flow<List<RecurringTransaction>> = _recurringFlow.asStateFlow()
 
     override suspend fun createRecurringTransaction(
         accountId: String,
@@ -43,34 +32,28 @@ class RecurringRepositoryImpl(
         startDate: String?,
         endDate: String?
     ): Result<RecurringTransaction, DataError> {
-        val id = UUID.randomUUID().toString()
-        val resolvedStartDate = startDate ?: LocalDate.now().toString()
-        val entity = RecurringTransactionEntity(
-            id = id,
-            accountId = accountId,
-            categoryId = categoryId,
-            amount = amount,
-            type = type,
-            frequency = frequency,
-            note = note,
-            startDate = resolvedStartDate,
-            endDate = endDate,
-            nextRunDate = resolvedStartDate,
-            isActive = true,
-            createdAt = LocalDateTime.now().toString(),
-            isSynced = false,
-            isNewLocal = true,
-            isDeleted = false
-        )
-
-        try {
-            recurringDao.insertRecurringTransaction(entity)
-        } catch (e: Exception) {
-            return Result.Error(DataError.Api("Failed to save recurring transaction locally"))
+        val result = safeCall<RecurringTransactionResponseDto> {
+            apiService.createRecurringTransaction(
+                CreateRecurringTransactionRequestDto(
+                    accountId = accountId,
+                    categoryId = categoryId,
+                    amount = amount,
+                    type = type,
+                    frequency = frequency,
+                    note = note,
+                    startDate = startDate ?: LocalDate.now().toString(),
+                    endDate = endDate
+                )
+            )
         }
-
-        triggerSync()
-        return Result.Success(entity.toDomain())
+        return when (result) {
+            is Result.Success -> {
+                val recurring = result.data.toDomain()
+                _recurringFlow.value = listOf(recurring) + _recurringFlow.value
+                Result.Success(recurring)
+            }
+            is Result.Error -> result
+        }
     }
 
     override suspend fun updateRecurringTransaction(
@@ -84,102 +67,55 @@ class RecurringRepositoryImpl(
         startDate: String?,
         endDate: String?
     ): Result<RecurringTransaction, DataError> {
-        val existing = try {
-            recurringDao.getRecurringTransactionById(id)
-        } catch (e: Exception) {
-            null
-        } ?: return Result.Error(DataError.Api("Recurring transaction not found"))
-
-        val resolvedStartDate = startDate ?: existing.startDate
-        val updated = existing.copy(
-            accountId = accountId,
-            categoryId = categoryId,
-            amount = amount,
-            type = type,
-            frequency = frequency,
-            note = note,
-            startDate = resolvedStartDate,
-            endDate = endDate,
-            nextRunDate = resolvedStartDate, // reset/recompute on next execution or sync
-            isSynced = false
-        )
-
-        try {
-            recurringDao.insertRecurringTransaction(updated)
-        } catch (e: Exception) {
-            return Result.Error(DataError.Api("Failed to update recurring transaction locally"))
+        val result = safeCall<RecurringTransactionResponseDto> {
+            apiService.updateRecurringTransaction(
+                id,
+                UpdateRecurringTransactionRequestDto(
+                    accountId = accountId,
+                    categoryId = categoryId,
+                    amount = amount,
+                    type = type,
+                    frequency = frequency,
+                    note = note,
+                    startDate = startDate,
+                    endDate = endDate
+                )
+            )
         }
-
-        triggerSync()
-        return Result.Success(updated.toDomain())
+        return when (result) {
+            is Result.Success -> {
+                val updated = result.data.toDomain()
+                _recurringFlow.value = _recurringFlow.value.map { if (it.id == id) updated else it }
+                Result.Success(updated)
+            }
+            is Result.Error -> result
+        }
     }
 
     override suspend fun deleteRecurringTransaction(id: String): Result<Unit, DataError> {
-        try {
-            recurringDao.markRecurringTransactionDeleted(id)
-        } catch (e: Exception) {
-            return Result.Error(DataError.Api("Failed to delete recurring transaction locally"))
+        val result = safeCall<Unit> { apiService.deleteRecurringTransaction(id) }
+        return when (result) {
+            is Result.Success -> {
+                _recurringFlow.value = _recurringFlow.value.filter { it.id != id }
+                Result.Success(Unit)
+            }
+            is Result.Error -> result
         }
-
-        triggerSync()
-        return Result.Success(Unit)
     }
 
     override suspend fun syncRecurringTransactions(): Result<Unit, DataError> {
-        val responseResult = safeCall<List<RecurringTransactionResponseDto>> {
-            apiService.getRecurringTransactions()
-        }
-
-        return when (responseResult) {
+        val result = safeCall<List<RecurringTransactionResponseDto>> { apiService.getRecurringTransactions() }
+        return when (result) {
             is Result.Success -> {
-                try {
-                    val entities = responseResult.data.map { dto ->
-                        RecurringTransactionEntity(
-                            id = dto.id,
-                            accountId = dto.accountId,
-                            categoryId = dto.categoryId,
-                            amount = dto.amount,
-                            type = dto.type,
-                            frequency = dto.frequency,
-                            note = dto.note,
-                            startDate = dto.startDate,
-                            endDate = dto.endDate,
-                            nextRunDate = dto.nextRunDate,
-                            isActive = dto.isActive,
-                            createdAt = dto.createdAt,
-                            isSynced = true,
-                            isNewLocal = false,
-                            isDeleted = false
-                        )
-                    }
-                    recurringDao.replaceRecurringTransactions(entities)
-                    Result.Success(Unit)
-                } catch (e: Exception) {
-                    Result.Error(DataError.Api("Failed to save synced recurring transactions locally"))
-                }
+                _recurringFlow.value = result.data.map { it.toDomain() }
+                Result.Success(Unit)
             }
-            is Result.Error -> Result.Error(responseResult.error)
-        }
-    }
-
-    private fun triggerSync() {
-        try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-
-            val syncRequest = OneTimeWorkRequestBuilder<SyncRecurringTransactionsWorker>()
-                .setConstraints(constraints)
-                .build()
-
-            WorkManager.getInstance(context).enqueue(syncRequest)
-        } catch (e: Exception) {
-            // Ignore WorkManager setup failures
+            is Result.Error -> result
         }
     }
 }
 
-fun RecurringTransactionEntity.toDomain() = RecurringTransaction(
+fun RecurringTransactionResponseDto.toDomain() = RecurringTransaction(
     id = id,
     accountId = accountId,
     categoryId = categoryId,

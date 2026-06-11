@@ -13,7 +13,7 @@ import org.koin.dsl.module
 
 val accountsModule = module {
     single { AccountApiService(get(), get()) }
-    single<AccountRepository> { AccountRepositoryImpl(get(), get(), get()) }
+    single<AccountRepository> { AccountRepositoryImpl(get()) }
 
     factory { CreateAccountUseCase(get()) }
     factory { GetAccountsUseCase(get()) }

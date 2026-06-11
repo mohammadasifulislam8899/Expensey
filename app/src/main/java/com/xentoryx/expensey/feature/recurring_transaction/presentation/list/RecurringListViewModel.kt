@@ -2,11 +2,9 @@ package com.xentoryx.expensey.feature.recurring_transaction.presentation.list
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.xentoryx.expensey.core.data.database.dao.AccountDao
-import com.xentoryx.expensey.core.data.database.dao.CategoryDao
 import com.xentoryx.expensey.core.domain.util.Result
-import com.xentoryx.expensey.feature.dashboard.data.mapper.toDomain
-import com.xentoryx.expensey.feature.category.data.repository.toDomain
+import com.xentoryx.expensey.feature.accounts.domain.repository.AccountRepository
+import com.xentoryx.expensey.feature.category.domain.repository.CategoryRepository
 import com.xentoryx.expensey.feature.recurring_transaction.domain.usecase.DeleteRecurringTransactionUseCase
 import com.xentoryx.expensey.feature.recurring_transaction.domain.usecase.GetRecurringTransactionsUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,8 +17,8 @@ import kotlinx.coroutines.launch
 class RecurringListViewModel(
     private val getRecurringTransactionsUseCase: GetRecurringTransactionsUseCase,
     private val deleteRecurringTransactionUseCase: DeleteRecurringTransactionUseCase,
-    private val accountDao: AccountDao,
-    private val categoryDao: CategoryDao
+    private val accountRepository: AccountRepository,
+    private val categoryRepository: CategoryRepository
 ) : ViewModel() {
 
     private val _isLoading = MutableStateFlow(false)
@@ -28,15 +26,15 @@ class RecurringListViewModel(
 
     val state: StateFlow<RecurringListState> = combine(
         getRecurringTransactionsUseCase(),
-        accountDao.getAccountsFlow(),
-        categoryDao.getCategoriesFlow(),
+        accountRepository.getAccountsFlow(),
+        categoryRepository.getCategoriesFlow(),
         _isLoading,
         _errorMessage
-    ) { recurring, dbAccounts, dbCategories, isLoading, errorMessage ->
+    ) { recurring, accounts, categories, isLoading, errorMessage ->
         RecurringListState(
             recurringTransactions = recurring,
-            accounts = dbAccounts.map { it.toDomain() },
-            categories = dbCategories.map { it.toDomain() },
+            accounts = accounts,
+            categories = categories,
             isLoading = isLoading,
             errorMessage = errorMessage
         )
@@ -56,9 +54,7 @@ class RecurringListViewModel(
             _errorMessage.value = null
             when (getRecurringTransactionsUseCase.sync()) {
                 is Result.Success -> {}
-                is Result.Error -> {
-                    _errorMessage.value = "Failed to sync recurring transactions from server"
-                }
+                is Result.Error -> _errorMessage.value = "Failed to sync recurring transactions from server"
             }
             _isLoading.value = false
         }
@@ -70,9 +66,7 @@ class RecurringListViewModel(
             _errorMessage.value = null
             when (deleteRecurringTransactionUseCase(id)) {
                 is Result.Success -> {}
-                is Result.Error -> {
-                    _errorMessage.value = "Failed to delete recurring transaction"
-                }
+                is Result.Error -> _errorMessage.value = "Failed to delete recurring transaction"
             }
             _isLoading.value = false
         }

@@ -13,7 +13,7 @@ import org.koin.dsl.module
 
 val categoryModule = module {
     single { CategoryApiService(get(), get()) }
-    single<CategoryRepository> { CategoryRepositoryImpl(get(), get(), get()) }
+    single<CategoryRepository> { CategoryRepositoryImpl(get()) }
 
     factory { CreateCategoryUseCase(get()) }
     factory { GetCategoriesUseCase(get()) }
