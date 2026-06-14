@@ -66,6 +66,12 @@ class DashboardViewModel(
         }
     }
 
+    fun dismissOnboarding() {
+        viewModelScope.launch {
+            tokenManager.saveOnboardingCompleted(true)
+        }
+    }
+
     /**
      * Subscribe to the reactive dashboard Flow.
      * The repository's Flow uses Room Flows + onStart{} network fetch.
@@ -90,6 +96,13 @@ class DashboardViewModel(
             launch {
                 tokenManager.exchangeRatesTimestamp.collect { timestamp ->
                     _state.update { it.copy(ratesUpdateTimestamp = timestamp) }
+                }
+            }
+
+            // Observe onboarding status reactively
+            launch {
+                tokenManager.onboardingCompleted.collect { completed ->
+                    _state.update { it.copy(showOnboarding = !completed) }
                 }
             }
 

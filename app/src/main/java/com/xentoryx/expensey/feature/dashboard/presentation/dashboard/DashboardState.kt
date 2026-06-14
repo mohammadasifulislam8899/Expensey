@@ -11,5 +11,6 @@ data class DashboardState(
     val budgets: List<Budget> = emptyList(),
     val error: DataError? = null,
     val monthlyTrend: List<MonthlyTrendUiModel> = emptyList(),
-    val ratesUpdateTimestamp: Long = 0L
+    val ratesUpdateTimestamp: Long = 0L,
+    val showOnboarding: Boolean = false
 )

@@ -84,6 +84,7 @@ fun DashboardScreen(
 
     var showSyncSheet by remember { mutableStateOf(false) }
     var isSyncingLocal by remember { mutableStateOf(false) }
+    var showHelpDialog by remember { mutableStateOf(false) }
 
     ObserveAsEvents(viewModel.effects) { effect ->
         when (effect) {
@@ -173,6 +174,21 @@ fun DashboardScreen(
                             Icon(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = "Refresh",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { showHelpDialog = true },
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.surface, CircleShape)
+                                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                .size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "App Tour & Help",
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -535,6 +551,18 @@ fun DashboardScreen(
                         showSyncSheet = false
                         Toast.makeText(context, "Sync enqueued successfully", Toast.LENGTH_SHORT).show()
                     }
+                }
+            }
+        )
+    }
+
+    // Onboarding Guide Dialog
+    if (state.showOnboarding || showHelpDialog) {
+        OnboardingTourDialog(
+            onDismiss = {
+                showHelpDialog = false
+                if (state.showOnboarding) {
+                    viewModel.dismissOnboarding()
                 }
             }
         )
@@ -1715,5 +1743,107 @@ fun getResponsiveTransactionColor(type: String): Color {
         "EXPENSE" -> if (isDark) Color(0xFFFF5C8A) else Color(0xFFD32F2F)
         "TRANSFER" -> if (isDark) Color(0xFF2EE5C5) else Color(0xFF0288D1)
         else -> MaterialTheme.colorScheme.onSurface
+    }
+}
+
+@Composable
+fun OnboardingTourDialog(
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Welcome to Expensey! 🚀",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp
+                )
+            }
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Here is a quick tour of what you can do with your financial engine:",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp
+                )
+
+                OnboardingFeatureItem(
+                    icon = "➕",
+                    title = "Unified Transaction FAB",
+                    desc = "Tap the central bottom '+' button to log expenses, income, or transfers between accounts."
+                )
+
+                OnboardingFeatureItem(
+                    icon = "💱",
+                    title = "Live Multi-Currency Conversion",
+                    desc = "Create accounts in BDT, USD, EUR, etc. Dashboard aggregates everything into your default currency automatically."
+                )
+
+                OnboardingFeatureItem(
+                    icon = "📱",
+                    title = "Country Bank/MFS Suggestions",
+                    desc = "Set your country in Settings. Tapping Bank or Mobile Account will recommend popular wallets (bKash, Nagad, Venmo, etc.) to autofill names."
+                )
+
+                OnboardingFeatureItem(
+                    icon = "⚠️",
+                    title = "Danger Zone Purging",
+                    desc = "Wipe all transaction history or permanently delete your account securely inside settings."
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                modifier = Modifier.fillMaxWidth().height(48.dp)
+            ) {
+                Text("Let's Go!", fontWeight = FontWeight.Bold)
+            }
+        }
+    )
+}
+
+@Composable
+fun OnboardingFeatureItem(
+    icon: String,
+    title: String,
+    desc: String
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = icon, fontSize = 16.sp)
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = desc,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }

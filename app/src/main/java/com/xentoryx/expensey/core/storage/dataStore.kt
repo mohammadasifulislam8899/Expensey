@@ -30,6 +30,7 @@ class TokenManager(private val context: Context) {
         private val NOTIFICATION_MINUTE_KEY = intPreferencesKey("notification_minute")
         private val USER_CURRENCY_KEY = stringPreferencesKey("user_currency")
         private val USER_COUNTRY_KEY = stringPreferencesKey("user_country")
+        private val ONBOARDING_COMPLETED_KEY = booleanPreferencesKey("onboarding_completed")
         private val EXCHANGE_RATES_KEY = stringPreferencesKey("exchange_rates")
         private val EXCHANGE_RATES_TIMESTAMP_KEY = longPreferencesKey("exchange_rates_timestamp")
     }
@@ -132,6 +133,16 @@ class TokenManager(private val context: Context) {
 
     val userCountry: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[USER_COUNTRY_KEY] ?: "BD"
+    }
+
+    suspend fun saveOnboardingCompleted(completed: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[ONBOARDING_COMPLETED_KEY] = completed
+        }
+    }
+
+    val onboardingCompleted: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[ONBOARDING_COMPLETED_KEY] ?: false
     }
 
     suspend fun saveExchangeRates(json: String, timestamp: Long) {
