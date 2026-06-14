@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
@@ -110,6 +111,13 @@ fun LoginScreen(
         label = "CharacterFloating"
     )
 
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp.dp
+    val showCharacter = screenHeight > 580.dp
+    val characterHeight = if (screenHeight < 720.dp) 160.dp else 280.dp
+    val circleSize = if (screenHeight < 720.dp) 130.dp else 220.dp
+    val characterPadding = if (screenHeight < 720.dp) 6.dp else 12.dp
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = CrushBg,
@@ -135,33 +143,35 @@ fun LoginScreen(
             ) {
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Giant Character Illustration
-                Box(
-                    modifier = Modifier
-                        .graphicsLayer { translationY = characterYOffset }
-                        .fillMaxWidth()
-                        .height(280.dp), // ✅ Height কমানো হয়েছে
-                    contentAlignment = Alignment.Center
-                ) {
+                // Giant Character Illustration (Responsive sizing & visibility)
+                if (showCharacter) {
                     Box(
                         modifier = Modifier
-                            .size(220.dp)
-                            .background(CrushLavender.copy(alpha = 0.05f), CircleShape)
-                            .border(
-                                width = 1.dp,
-                                color = CrushLavender.copy(alpha = 0.18f),
-                                shape = CircleShape
-                            )
-                    )
+                            .graphicsLayer { translationY = characterYOffset }
+                            .fillMaxWidth()
+                            .height(characterHeight),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(circleSize)
+                                .background(CrushLavender.copy(alpha = 0.05f), CircleShape)
+                                .border(
+                                    width = 1.dp,
+                                    color = CrushLavender.copy(alpha = 0.18f),
+                                    shape = CircleShape
+                                )
+                        )
 
-                    Image(
-                        painter = painterResource(R.drawable.expend),
-                        contentDescription = "Active Gym Character",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp),
-                        contentScale = ContentScale.Fit
-                    )
+                        Image(
+                            painter = painterResource(R.drawable.expend),
+                            contentDescription = "Active Gym Character",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(characterPadding),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))

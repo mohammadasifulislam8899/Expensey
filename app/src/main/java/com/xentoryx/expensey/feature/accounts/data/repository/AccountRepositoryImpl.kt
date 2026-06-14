@@ -1,25 +1,42 @@
 package com.xentoryx.expensey.feature.accounts.data.repository
 
+import android.content.Context
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import com.xentoryx.expensey.core.data.database.dao.AccountDao
+import com.xentoryx.expensey.core.data.database.entity.AccountEntity
+import com.xentoryx.expensey.core.data.database.entity.SyncStatus
 import com.xentoryx.expensey.core.data.networking.safeCall
 import com.xentoryx.expensey.core.domain.util.DataError
 import com.xentoryx.expensey.core.domain.util.Result
+import com.xentoryx.expensey.core.sync.SyncAccountsWorker
+import com.xentoryx.expensey.feature.accounts.data.remote.dto.CreateAccountRequestDto
+import com.xentoryx.expensey.feature.dashboard.data.mapper.toDomain
+import com.xentoryx.expensey.feature.dashboard.domain.model.AccountSummary
 import com.xentoryx.expensey.feature.accounts.data.remote.api.AccountApiService
 import com.xentoryx.expensey.feature.accounts.data.remote.dto.AccountResponseDto
-import com.xentoryx.expensey.feature.accounts.data.remote.dto.CreateAccountRequestDto
 import com.xentoryx.expensey.feature.accounts.data.remote.dto.UpdateAccountRequestDto
 import com.xentoryx.expensey.feature.accounts.domain.repository.AccountRepository
-import com.xentoryx.expensey.feature.dashboard.domain.model.AccountSummary
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 class AccountRepositoryImpl(
+    private val context: Context,
+    private val accountDao: AccountDao,
     private val apiService: AccountApiService
 ) : AccountRepository {
 
-    private val _accountsFlow = MutableStateFlow<List<AccountSummary>>(emptyList())
-
-    override fun getAccountsFlow(): Flow<List<AccountSummary>> = _accountsFlow.asStateFlow()
+    override fun getAccountsFlow(): Flow<List<AccountSummary>> {
+        return accountDao.getAccountsFlow().map { entities ->
+            entities.map { it.toDomain() }
+        }
+    }
 
     override suspend fun createAccount(
         name: String,
@@ -27,39 +44,64 @@ class AccountRepositoryImpl(
         initialBalance: Double,
         currencyCode: String
     ): Result<AccountSummary, DataError> {
-        val result = safeCall<AccountResponseDto> {
-            apiService.createAccount(
-                CreateAccountRequestDto(
-                    name = name,
-                    type = type,
-                    initialBalance = initialBalance,
-                    currencyCode = currencyCode
-                )
-            )
+        val accountId = UUID.randomUUID().toString()
+
+        val entity = AccountEntity(
+            accountId = accountId,
+            accountName = name,
+            accountType = type,
+            balance = initialBalance,
+            currencyCode = currencyCode,
+            syncStatus = SyncStatus.PENDING,
+            isNewLocal = true,
+            isDeleted = false
+        )
+
+        try {
+            accountDao.insertAccount(entity)
+        } catch (e: Exception) {
+            return Result.Error(DataError.Api("Failed to save account locally"))
         }
-        return when (result) {
-            is Result.Success -> {
-                val account = result.data.toDomain()
-                _accountsFlow.value = _accountsFlow.value + account
-                Result.Success(account)
-            }
-            is Result.Error -> result
-        }
+
+        triggerSync()
+
+        return Result.Success(entity.toDomain())
     }
 
     override suspend fun syncAccounts(): Result<Unit, DataError> {
-        val result = safeCall<List<AccountResponseDto>> { apiService.getAccounts() }
-        return when (result) {
+        val responseResult = safeCall<List<AccountResponseDto>> {
+            apiService.getAccounts()
+        }
+
+        return when (responseResult) {
             is Result.Success -> {
-                _accountsFlow.value = result.data.map { it.toDomain() }
-                Result.Success(Unit)
+                try {
+                    val networkAccounts = responseResult.data.map { dto ->
+                        AccountEntity(
+                            accountId = dto.id,
+                            accountName = dto.name,
+                            accountType = dto.type,
+                            balance = dto.balance,
+                            currencyCode = dto.currencyCode,
+                            syncStatus = SyncStatus.SYNCED,
+                            isNewLocal = false,
+                            isDeleted = false
+                        )
+                    }
+                    accountDao.replaceAccounts(networkAccounts)
+                    Result.Success(Unit)
+                } catch (e: Exception) {
+                    Result.Error(DataError.Api("Failed to save synced accounts locally"))
+                }
             }
-            is Result.Error -> result
+            is Result.Error -> {
+                Result.Error(responseResult.error)
+            }
         }
     }
 
     override suspend fun getAccountById(id: String): AccountSummary? {
-        return _accountsFlow.value.find { it.accountId == id }
+        return accountDao.getAccountById(id)?.toDomain()
     }
 
     override suspend fun updateAccount(
@@ -68,35 +110,63 @@ class AccountRepositoryImpl(
         type: String,
         currencyCode: String
     ): Result<AccountSummary, DataError> {
-        val result = safeCall<AccountResponseDto> {
-            apiService.updateAccount(id, UpdateAccountRequestDto(name = name, type = type, currencyCode = currencyCode))
+        val localAccount = accountDao.getAccountById(id)
+            ?: return Result.Error(DataError.Api("Account not found locally"))
+
+        val entity = AccountEntity(
+            accountId = id,
+            accountName = name,
+            accountType = type,
+            balance = localAccount.balance,
+            currencyCode = currencyCode,
+            syncStatus = SyncStatus.PENDING,
+            isNewLocal = localAccount.isNewLocal,
+            isDeleted = false
+        )
+
+        try {
+            accountDao.insertAccount(entity)
+        } catch (e: Exception) {
+            return Result.Error(DataError.Api("Failed to save updated account locally"))
         }
-        return when (result) {
-            is Result.Success -> {
-                val updated = result.data.toDomain()
-                _accountsFlow.value = _accountsFlow.value.map { if (it.accountId == id) updated else it }
-                Result.Success(updated)
-            }
-            is Result.Error -> result
-        }
+
+        triggerSync()
+
+        return Result.Success(entity.toDomain())
     }
 
     override suspend fun deleteAccount(id: String): Result<Unit, DataError> {
-        val result = safeCall<Unit> { apiService.deleteAccount(id) }
-        return when (result) {
-            is Result.Success -> {
-                _accountsFlow.value = _accountsFlow.value.filter { it.accountId != id }
-                Result.Success(Unit)
+        val localAccount = accountDao.getAccountById(id)
+            ?: return Result.Success(Unit)
+
+        try {
+            if (localAccount.isNewLocal) {
+                accountDao.deleteAccountById(id)
+            } else {
+                accountDao.markAccountDeleted(id)
             }
-            is Result.Error -> result
+        } catch (e: Exception) {
+            return Result.Error(DataError.Api("Failed to delete account locally"))
+        }
+
+        triggerSync()
+
+        return Result.Success(Unit)
+    }
+
+    private fun triggerSync() {
+        try {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val syncRequest = OneTimeWorkRequestBuilder<SyncAccountsWorker>()
+                .setConstraints(constraints)
+                .build()
+
+            WorkManager.getInstance(context).enqueue(syncRequest)
+        } catch (e: Exception) {
+            // Ignore WorkManager errors
         }
     }
 }
-
-fun AccountResponseDto.toDomain() = AccountSummary(
-    accountId = id,
-    accountName = name,
-    accountType = type,
-    balance = balance,
-    currencyCode = currencyCode
-)

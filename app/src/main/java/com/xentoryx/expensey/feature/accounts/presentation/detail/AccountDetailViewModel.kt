@@ -2,9 +2,15 @@ package com.xentoryx.expensey.feature.accounts.presentation.detail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xentoryx.expensey.core.data.database.dao.AccountDao
+import com.xentoryx.expensey.core.data.database.dao.CategoryDao
+import com.xentoryx.expensey.feature.dashboard.data.mapper.toDomain
+import com.xentoryx.expensey.feature.dashboard.domain.model.AccountSummary
+import com.xentoryx.expensey.feature.dashboard.domain.model.CategoryBreakdown
 import com.xentoryx.expensey.feature.dashboard.domain.model.Transaction
 import com.xentoryx.expensey.feature.transaction.domain.usecase.GetTransactionsUseCase
 import com.xentoryx.expensey.feature.accounts.domain.usecase.DeleteAccountUseCase
+import com.xentoryx.expensey.feature.transaction.presentation.list.TransactionUiModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -14,19 +20,58 @@ import kotlinx.coroutines.launch
 
 class AccountDetailViewModel(
     private val getTransactionsUseCase: GetTransactionsUseCase,
-    private val deleteAccountUseCase: DeleteAccountUseCase
+    private val deleteAccountUseCase: DeleteAccountUseCase,
+    private val accountDao: AccountDao,
+    private val categoryDao: CategoryDao
 ) : ViewModel() {
 
     private val _accountId = MutableStateFlow<String?>(null)
 
-    val transactions: StateFlow<List<Transaction>> = combine(
+    val transactions: StateFlow<List<TransactionUiModel>> = combine(
         getTransactionsUseCase.getLocalTransactions(),
+        accountDao.getAccountsFlow(),
+        categoryDao.getCategoriesFlow(),
         _accountId
-    ) { allTransactions, accountId ->
+    ) { allTransactions, dbAccounts, dbCategories, accountId ->
         if (accountId == null) {
             emptyList()
         } else {
-            allTransactions.filter { it.accountId == accountId }
+            val accounts = dbAccounts.map { it.toDomain() }
+            val categories = dbCategories.map { entity ->
+                CategoryBreakdown(
+                    categoryId = entity.id,
+                    categoryName = entity.name,
+                    categoryIcon = entity.icon,
+                    categoryColor = entity.color,
+                    type = entity.type,
+                    total = 0.0,
+                    percentage = 0.0
+                )
+            }
+            allTransactions
+                .filter { it.accountId == accountId }
+                .map { txn ->
+                    val accountName = accounts.find { it.accountId == txn.accountId }?.accountName ?: "Unknown"
+                    val category = categories.find { it.categoryId == txn.categoryId }
+                    TransactionUiModel(
+                        id = txn.id,
+                        accountId = txn.accountId,
+                        accountName = accountName,
+                        categoryId = txn.categoryId,
+                        categoryName = category?.categoryName ?: "Unknown",
+                        categoryIcon = category?.categoryIcon,
+                        categoryColor = category?.categoryColor,
+                        transferToAccountId = txn.transferToAccountId,
+                        amount = txn.amount,
+                        type = txn.type,
+                        note = txn.note,
+                        date = txn.transactionDate,
+                        createdAt = txn.createdAt,
+                        isRecurring = false,
+                        isActive = true,
+                        syncStatus = txn.syncStatus
+                    )
+                }
         }
     }.stateIn(
         scope = viewModelScope,

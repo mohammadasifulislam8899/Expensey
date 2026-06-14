@@ -13,6 +13,7 @@ fun UserResponseDto.toDomain(): User = User(
     email = email,
     fullName = fullName,
     currencyCode = currencyCode,
+    countryCode = countryCode,
     isEmailVerified = isEmailVerified,
     isActive = isActive
 )

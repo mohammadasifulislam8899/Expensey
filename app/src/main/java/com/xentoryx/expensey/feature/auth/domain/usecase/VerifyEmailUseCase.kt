@@ -5,14 +5,15 @@ import com.xentoryx.expensey.core.domain.util.DataError
 import com.xentoryx.expensey.core.domain.util.EmptyResult
 import com.xentoryx.expensey.feature.auth.domain.repository.AuthRepository
 import com.xentoryx.expensey.core.domain.util.Result
+import com.xentoryx.expensey.feature.auth.domain.model.AuthResult
 
 data class VerifyEmailParams(val userId: String, val otp: String)
 
 class VerifyEmailUseCase(
     private val repository: AuthRepository
-) : BaseUseCase<VerifyEmailParams, Unit, DataError> {
+) : BaseUseCase<VerifyEmailParams, AuthResult, DataError> {
 
-    override suspend fun invoke(params: VerifyEmailParams): EmptyResult<DataError> {
+    override suspend fun invoke(params: VerifyEmailParams): Result<AuthResult, DataError> {
         if (params.otp.isBlank()) {
             return Result.Error(DataError.Api("OTP is required"))
         }

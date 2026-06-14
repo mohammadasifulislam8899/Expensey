@@ -10,7 +10,7 @@ import org.koin.dsl.module
 
 val dashboardModule = module {
     single { DashboardApiService(get(), get()) }
-    single<DashboardRepository> { DashboardRepositoryImpl(get()) }
+    single<DashboardRepository> { DashboardRepositoryImpl(get(), get(), get(), get(), get(), get(), get()) }
     factory { GetDashboardUseCase(get()) }
     viewModelOf(::DashboardViewModel)
 }

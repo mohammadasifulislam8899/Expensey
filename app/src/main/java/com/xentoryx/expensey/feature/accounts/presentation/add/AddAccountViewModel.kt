@@ -7,6 +7,7 @@ import com.xentoryx.expensey.core.domain.util.Result
 import com.xentoryx.expensey.feature.accounts.domain.usecase.CreateAccountUseCase
 import com.xentoryx.expensey.feature.accounts.domain.usecase.UpdateAccountUseCase
 import com.xentoryx.expensey.feature.accounts.domain.repository.AccountRepository
+import com.xentoryx.expensey.core.storage.TokenManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -15,11 +16,20 @@ import kotlinx.coroutines.launch
 class AddAccountViewModel(
     private val createAccountUseCase: CreateAccountUseCase,
     private val updateAccountUseCase: UpdateAccountUseCase,
-    private val accountRepository: AccountRepository
+    private val accountRepository: AccountRepository,
+    private val tokenManager: TokenManager
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AddAccountState())
     val state = _state.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            tokenManager.userCountry.collect { country ->
+                _state.update { it.copy(countryCode = country) }
+            }
+        }
+    }
 
     fun setEditAccount(accountId: String?) {
         if (accountId == null) {

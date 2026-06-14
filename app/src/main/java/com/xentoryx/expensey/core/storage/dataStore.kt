@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -23,6 +25,13 @@ class TokenManager(private val context: Context) {
         private val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
         private val DASHBOARD_CACHE_KEY = stringPreferencesKey("dashboard_cache")
         private val BIOMETRIC_ENABLED_KEY = booleanPreferencesKey("biometric_enabled")
+        private val NOTIFICATION_ENABLED_KEY = booleanPreferencesKey("notification_enabled")
+        private val NOTIFICATION_HOUR_KEY = intPreferencesKey("notification_hour")
+        private val NOTIFICATION_MINUTE_KEY = intPreferencesKey("notification_minute")
+        private val USER_CURRENCY_KEY = stringPreferencesKey("user_currency")
+        private val USER_COUNTRY_KEY = stringPreferencesKey("user_country")
+        private val EXCHANGE_RATES_KEY = stringPreferencesKey("exchange_rates")
+        private val EXCHANGE_RATES_TIMESTAMP_KEY = longPreferencesKey("exchange_rates_timestamp")
     }
 
     suspend fun saveTokens(accessToken: String, refreshToken: String) {
@@ -79,6 +88,68 @@ class TokenManager(private val context: Context) {
     val biometricEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[BIOMETRIC_ENABLED_KEY] ?: false
     }
+
+    suspend fun saveNotificationEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[NOTIFICATION_ENABLED_KEY] = enabled
+        }
+    }
+
+    val notificationEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[NOTIFICATION_ENABLED_KEY] ?: false
+    }
+
+    suspend fun saveNotificationTime(hour: Int, minute: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[NOTIFICATION_HOUR_KEY] = hour
+            prefs[NOTIFICATION_MINUTE_KEY] = minute
+        }
+    }
+
+    val notificationHour: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[NOTIFICATION_HOUR_KEY] ?: 21
+    }
+
+    val notificationMinute: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[NOTIFICATION_MINUTE_KEY] ?: 0
+    }
+
+    suspend fun saveUserCurrency(currencyCode: String) {
+        context.dataStore.edit { prefs ->
+            prefs[USER_CURRENCY_KEY] = currencyCode
+        }
+    }
+
+    val userCurrency: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[USER_CURRENCY_KEY] ?: "BDT"
+    }
+
+    suspend fun saveUserCountry(countryCode: String) {
+        context.dataStore.edit { prefs ->
+            prefs[USER_COUNTRY_KEY] = countryCode
+        }
+    }
+
+    val userCountry: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[USER_COUNTRY_KEY] ?: "BD"
+    }
+
+    suspend fun saveExchangeRates(json: String, timestamp: Long) {
+        context.dataStore.edit { prefs ->
+            prefs[EXCHANGE_RATES_KEY] = json
+            prefs[EXCHANGE_RATES_TIMESTAMP_KEY] = timestamp
+        }
+    }
+
+    suspend fun getExchangeRates(): String? =
+        context.dataStore.data.first()[EXCHANGE_RATES_KEY]
+
+    suspend fun getExchangeRatesTimestamp(): Long =
+        context.dataStore.data.first()[EXCHANGE_RATES_TIMESTAMP_KEY] ?: 0L
+
+    val exchangeRatesTimestamp: Flow<Long> = context.dataStore.data.map { prefs ->
+        prefs[EXCHANGE_RATES_TIMESTAMP_KEY] ?: 0L
+    }.distinctUntilChanged()
 
     suspend fun clearAll() {
         context.dataStore.edit { it.clear() }

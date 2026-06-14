@@ -49,7 +49,8 @@ fun NavGraphBuilder.authNavGraph(
                     navController.navigate(LoginRoute) {
                         popUpTo<LoginRoute> { inclusive = true }
                     }
-                }
+                },
+                onNavigateToHome = onAuthSuccess
             )
         }
         composable<ForgotPasswordRoute> {

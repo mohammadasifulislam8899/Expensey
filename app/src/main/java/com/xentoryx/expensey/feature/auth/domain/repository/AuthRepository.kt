@@ -22,7 +22,7 @@ interface AuthRepository {
     suspend fun verifyEmail(
         userId: String,
         otp: String
-    ): EmptyResult<DataError>
+    ): Result<AuthResult, DataError>
 
     suspend fun resendOtp(
         email: String
@@ -41,7 +41,8 @@ interface AuthRepository {
 
     suspend fun updateProfile(
         fullName: String,
-        currencyCode: String
+        currencyCode: String,
+        countryCode: String? = null
     ): Result<User, DataError>
 
     suspend fun changePassword(
@@ -50,6 +51,10 @@ interface AuthRepository {
     ): EmptyResult<DataError>
 
     suspend fun logout(): EmptyResult<DataError>
+
+    suspend fun deleteAccount(): EmptyResult<DataError>
+
+    suspend fun resetAllData(): EmptyResult<DataError>
 
     fun isLoggedIn(): Flow<Boolean>
 }

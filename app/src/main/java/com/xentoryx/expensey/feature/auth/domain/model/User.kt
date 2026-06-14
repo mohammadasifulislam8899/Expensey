@@ -5,6 +5,7 @@ data class User(
     val email: String,
     val fullName: String,
     val currencyCode: String,
+    val countryCode: String,
     val isEmailVerified: Boolean,
     val isActive: Boolean
 )

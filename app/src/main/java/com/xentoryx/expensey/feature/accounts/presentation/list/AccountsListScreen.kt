@@ -13,29 +13,43 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.xentoryx.expensey.core.data.database.entity.SyncStatus
 import com.xentoryx.expensey.feature.accounts.presentation.add.AddAccountScreen
 import com.xentoryx.expensey.feature.accounts.presentation.add.AddAccountViewModel
 import com.xentoryx.expensey.feature.accounts.presentation.detail.AccountDetailScreen
 import com.xentoryx.expensey.feature.accounts.presentation.detail.AccountDetailViewModel
 import com.xentoryx.expensey.feature.dashboard.domain.model.AccountSummary
+import com.xentoryx.expensey.feature.category.presentation.CategoriesScreen
+import com.xentoryx.expensey.feature.category.presentation.CategoriesViewModel
 import org.koin.androidx.compose.koinViewModel
 import java.util.Locale
+import com.xentoryx.expensey.core.presentation.components.CrushCanvasDecoration
+import com.xentoryx.expensey.core.storage.TokenManager
+import com.xentoryx.expensey.core.storage.CurrencyConverter
+import org.koin.compose.koinInject
 
 sealed interface AccountsNavigation {
     data object List : AccountsNavigation
-    data object Add : AccountsNavigation
-    data class Detail(val account: AccountSummary) : AccountsNavigation
-    data class Edit(val account: AccountSummary) : AccountsNavigation
+    data object AddAccount : AccountsNavigation
+    data class AccountDetail(val account: AccountSummary) : AccountsNavigation
+    data class EditAccount(val account: AccountSummary) : AccountsNavigation
+    data object Categories : AccountsNavigation
 }
 
 @Composable
@@ -65,29 +79,32 @@ fun AccountsListScreen(
             is AccountsNavigation.List -> {
                 AccountsListContent(
                     viewModel = viewModel,
-                    onAddAccountClick = { navigateTo(AccountsNavigation.Add) },
-                    onAccountClick = { account -> navigateTo(AccountsNavigation.Detail(account)) }
+                    onAddAccountClick = { navigateTo(AccountsNavigation.AddAccount) },
+                    onAccountClick = { account -> navigateTo(AccountsNavigation.AccountDetail(account)) },
+                    onBackClick = {},
+                    onCategoriesClick = { navigateTo(AccountsNavigation.Categories) },
+                    isRoot = true
                 )
             }
-            is AccountsNavigation.Add -> {
+            is AccountsNavigation.AddAccount -> {
                 AddAccountScreen(
                     viewModel = koinViewModel<AddAccountViewModel>(),
                     onBackClick = navigateBack
                 )
             }
-            is AccountsNavigation.Detail -> {
+            is AccountsNavigation.AccountDetail -> {
                 AccountDetailScreen(
                     account = currentScreen.account,
                     viewModel = koinViewModel<AccountDetailViewModel>(),
                     onBackClick = navigateBack,
-                    onEditAccountClick = { account -> navigateTo(AccountsNavigation.Edit(account)) },
+                    onEditAccountClick = { account -> navigateTo(AccountsNavigation.EditAccount(account)) },
                     onAccountDeleted = {
                         navigateBack()
                         viewModel.refreshAccounts()
                     }
                 )
             }
-            is AccountsNavigation.Edit -> {
+            is AccountsNavigation.EditAccount -> {
                 AddAccountScreen(
                     viewModel = koinViewModel<AddAccountViewModel>(),
                     accountId = currentScreen.account.accountId,
@@ -95,6 +112,12 @@ fun AccountsListScreen(
                         navigationStack = listOf(AccountsNavigation.List)
                         viewModel.refreshAccounts()
                     }
+                )
+            }
+            is AccountsNavigation.Categories -> {
+                CategoriesScreen(
+                    viewModel = koinViewModel<CategoriesViewModel>(),
+                    onBackClick = navigateBack
                 )
             }
         }
@@ -107,10 +130,16 @@ fun AccountsListContent(
     viewModel: AccountsListViewModel,
     onAddAccountClick: () -> Unit,
     onAccountClick: (AccountSummary) -> Unit,
+    onBackClick: () -> Unit,
+    onCategoriesClick: () -> Unit = {},
+    isRoot: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val tokenManager: TokenManager = koinInject()
+    val userCurrency by tokenManager.userCurrency.collectAsState(initial = "BDT")
+    val currencyConverter: CurrencyConverter = koinInject()
 
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
@@ -119,8 +148,10 @@ fun AccountsListContent(
         }
     }
 
-    val totalAssets = remember(state.accounts) {
-        state.accounts.sumOf { it.balance }
+    val totalAssets = remember(state.accounts, userCurrency) {
+        state.accounts.sumOf { account ->
+            currencyConverter.convert(account.balance, account.currencyCode, userCurrency)
+        }
     }
 
     Scaffold(
@@ -137,126 +168,186 @@ fun AccountsListContent(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Header with Refresh Icon
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            CrushCanvasDecoration(modifier = Modifier.fillMaxSize())
+            Column(
+                modifier = Modifier.fillMaxSize()
             ) {
-                Column {
-                    Text(
-                        text = "Accounts",
-                        color = MaterialTheme.colorScheme.onBackground,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = (-0.5).sp
-                    )
-                    Text(
-                        text = "Manage your offline-first cash flows",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                IconButton(
-                    onClick = { viewModel.refreshAccounts() },
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.primary
-                    )
+                // Header Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (state.isLoading) {
-                        CircularProgressIndicator(
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (!isRoot) {
+                            IconButton(
+                                onClick = onBackClick,
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.surface, CircleShape)
+                                    .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                    .size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Column {
+                            Text(
+                                text = "Accounts",
+                                color = MaterialTheme.colorScheme.onBackground,
+                                fontSize = 26.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = (-0.5).sp
+                            )
+                            Text(
+                                text = "Manage your cash, cards, and banks",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (isRoot) {
+                            IconButton(
+                                onClick = onCategoriesClick,
+                                colors = IconButtonDefaults.iconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Icon(imageVector = Icons.Default.Category, contentDescription = "Manage Categories")
+                            }
+                        }
+                        IconButton(
+                            onClick = { viewModel.refreshAccounts() },
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                contentColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            if (state.isLoading) {
+                                CircularProgressIndicator(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
+                            }
+                        }
                     }
                 }
-            }
 
-            // Total Assets Banner Card
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(20.dp))
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp)
-                ) {
-                    Text(
-                        text = "TOTAL ASSETS",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = String.format(Locale.US, "$%,.2f", totalAssets),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Accounts List or Empty State
-            if (state.accounts.isEmpty()) {
+                // Total Assets Banner Card (Borderless centered banner)
+                val defaultCurrency = userCurrency
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
+                        .padding(horizontal = 20.dp, vertical = 24.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "No accounts found",
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Tap + to add your cash, bank, or card accounts.",
+                            text = "Total Assets",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp,
-                            fontWeight = FontWeight.Normal
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = formatCurrency(totalAssets, defaultCurrency),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 38.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = (-1).sp
                         )
                     }
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(horizontal = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    items(state.accounts) { account ->
-                        AccountItem(
-                            account = account,
-                            onClick = { onAccountClick(account) }
-                        )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Accounts List or Empty State
+                if (state.accounts.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "No accounts found",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Tap + to add your cash, bank, or card accounts.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Normal
+                            )
+                        }
                     }
-                    item { Spacer(modifier = Modifier.height(80.dp)) } // spacing for FAB
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(horizontal = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        item {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                shape = RoundedCornerShape(20.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                            ) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    state.accounts.forEachIndexed { index, account ->
+                                        AccountItem(
+                                            account = account,
+                                            onClick = { onAccountClick(account) }
+                                        )
+                                        if (index < state.accounts.lastIndex) {
+                                            HorizontalDivider(
+                                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                                modifier = Modifier.padding(horizontal = 16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        item { Spacer(modifier = Modifier.height(80.dp)) } // spacing for FAB
+                    }
                 }
             }
         }
@@ -269,47 +360,116 @@ fun AccountItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val gradientBrush = when (account.accountType.uppercase(Locale.US)) {
-        "CASH" -> Brush.horizontalGradient(listOf(Color(0xFF00B4DB), Color(0xFF0083B0)))
-        "CARD" -> Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
-        else -> Brush.horizontalGradient(listOf(Color(0xFF11998e), Color(0xFF38ef7d))) // BANK
+    val accentColor = when (account.accountType.uppercase(Locale.US)) {
+        "CASH" -> Color(0xFF2196F3) // Blue
+        "CARD" -> Color(0xFF9C27B0) // Purple
+        else -> Color(0xFF4CAF50) // Green (BANK)
     }
 
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(gradientBrush, RoundedCornerShape(20.dp))
             .clickable { onClick() }
-            .padding(20.dp)
+            .padding(horizontal = 16.dp, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Text(
-                    text = account.accountType.uppercase(Locale.US),
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp
-                )
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = account.accountName,
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(20.dp))
-            Text(
-                text = String.format(Locale.US, "$%,.2f", account.balance),
-                color = Color.White,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Black
+        // Accent circle showing Type indicator
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(accentColor.copy(alpha = 0.1f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.AccountBalanceWallet,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(18.dp)
             )
         }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = account.accountName,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+
+                // Sync status indicator badge
+                val (statusIcon, statusLabel, badgeColor) = when (account.syncStatus) {
+                    SyncStatus.PENDING -> Triple(Icons.Default.Schedule, "Pending", Color(0xFFFFC107))
+                    SyncStatus.FAILED -> Triple(Icons.Default.Warning, "Failed", Color(0xFFF44336))
+                    else -> Triple(Icons.Default.Cloud, "Synced", Color(0xFF00C2A0))
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .background(badgeColor.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        imageVector = statusIcon,
+                        contentDescription = statusLabel,
+                        tint = badgeColor,
+                        modifier = Modifier.size(9.dp)
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(
+                        text = statusLabel,
+                        color = badgeColor,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = account.accountType.uppercase(Locale.US),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.5.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Text(
+            text = formatCurrency(account.balance, account.currencyCode),
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Black,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
+}
+
+fun formatCurrency(amount: Double, currencyCode: String): String {
+    val symbol = when (currencyCode.uppercase(Locale.US)) {
+        "BDT" -> "৳"
+        "USD" -> "$"
+        "EUR" -> "€"
+        "GBP" -> "£"
+        "INR" -> "₹"
+        "CAD" -> "C$"
+        "AUD" -> "A$"
+        "JPY" -> "¥"
+        "SAR" -> "SR "
+        "AED" -> "DH "
+        else -> "$"
+    }
+    return String.format(Locale.US, "%s%,.2f", symbol, amount)
 }

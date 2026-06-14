@@ -57,6 +57,8 @@ class AuthRepositoryImpl(
         if (result is Result.Success) {
             tokenManager.saveTokens(result.data.accessToken, result.data.refreshToken)
             tokenManager.saveUserId(result.data.user.id)
+            tokenManager.saveUserCurrency(result.data.user.currencyCode)
+            tokenManager.saveUserCountry(result.data.user.countryCode)
         }
         return result.map { it.toDomain() }
     }
@@ -64,10 +66,17 @@ class AuthRepositoryImpl(
     override suspend fun verifyEmail(
         userId: String,
         otp: String
-    ): EmptyResult<DataError> {
-        return safeCall<MessageResponseDto> {
+    ): Result<AuthResult, DataError> {
+        val result = safeCall<AuthResponseDto> {
             apiService.verifyEmail(VerifyEmailRequestDto(userId, otp))
-        }.asEmptyDataResult()
+        }
+        if (result is Result.Success) {
+            tokenManager.saveTokens(result.data.accessToken, result.data.refreshToken)
+            tokenManager.saveUserId(result.data.user.id)
+            tokenManager.saveUserCurrency(result.data.user.currencyCode)
+            tokenManager.saveUserCountry(result.data.user.countryCode)
+        }
+        return result.map { it.toDomain() }
     }
 
     override suspend fun resendOtp(
@@ -96,18 +105,29 @@ class AuthRepositoryImpl(
     }
 
     override suspend fun getProfile(): Result<User, DataError> {
-        return safeCall<UserResponseDto> {
+        val result = safeCall<UserResponseDto> {
             apiService.getProfile()
         }.map { it.toDomain() }
+        if (result is Result.Success) {
+            tokenManager.saveUserCurrency(result.data.currencyCode)
+            tokenManager.saveUserCountry(result.data.countryCode)
+        }
+        return result
     }
 
     override suspend fun updateProfile(
         fullName: String,
-        currencyCode: String
+        currencyCode: String,
+        countryCode: String?
     ): Result<User, DataError> {
-        return safeCall<UserResponseDto> {
-            apiService.updateProfile(UpdateProfileRequestDto(fullName, currencyCode))
+        val result = safeCall<UserResponseDto> {
+            apiService.updateProfile(UpdateProfileRequestDto(fullName, currencyCode, countryCode))
         }.map { it.toDomain() }
+        if (result is Result.Success) {
+            tokenManager.saveUserCurrency(result.data.currencyCode)
+            tokenManager.saveUserCountry(result.data.countryCode)
+        }
+        return result
     }
 
     override suspend fun changePassword(
@@ -125,6 +145,20 @@ class AuthRepositoryImpl(
         }
         tokenManager.clearAll()
         return result.asEmptyDataResult()
+    }
+
+    override suspend fun deleteAccount(): EmptyResult<DataError> {
+        val result = safeCall<MessageResponseDto> {
+            apiService.deleteAccount()
+        }
+        tokenManager.clearAll()
+        return result.asEmptyDataResult()
+    }
+
+    override suspend fun resetAllData(): EmptyResult<DataError> {
+        return safeCall<MessageResponseDto> {
+            apiService.resetAllData()
+        }.asEmptyDataResult()
     }
 
     override fun isLoggedIn(): Flow<Boolean> = tokenManager.isLoggedIn

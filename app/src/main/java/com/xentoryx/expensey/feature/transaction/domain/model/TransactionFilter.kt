@@ -10,5 +10,6 @@ data class TransactionFilter(
     val maxAmount: Double? = null,
     val selectedAccounts: Set<String> = emptySet(),
     val selectedCategories: Set<String> = emptySet(),
-    val selectedTypes: Set<String> = emptySet()
+    val selectedTypes: Set<String> = emptySet(),
+    val recurrenceFilter: String = "ALL" // "ALL" | "ONETIME" | "RECURRING"
 )

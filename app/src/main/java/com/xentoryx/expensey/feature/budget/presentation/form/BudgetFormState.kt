@@ -13,5 +13,6 @@ data class BudgetFormState(
     val categories: List<CategoryBreakdown> = emptyList(),
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val isSuccess: Boolean = false
+    val isSuccess: Boolean = false,
+    val currencyCode: String = "BDT"
 )

@@ -22,6 +22,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.xentoryx.expensey.core.domain.model.AppCurrency
+import com.xentoryx.expensey.feature.accounts.presentation.util.PredefinedFinancialInstitutions
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,7 +100,8 @@ fun AddAccountScreen(
                     val types = listOf(
                         "CASH" to "Cash",
                         "BANK" to "Bank",
-                        "CARD" to "Card"
+                        "CARD" to "Card",
+                        "MOBILE" to "Mobile"
                     )
                     types.forEach { (typeKey, typeLabel) ->
                         val isSelected = state.type == typeKey
@@ -129,72 +134,112 @@ fun AddAccountScreen(
                 }
             }
 
-            // 2. Initial Balance Card (Only visible when creating a new account)
+            // 2. Initial Balance (Sleek minimalist style)
             if (accountId == null) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(16.dp),
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+                        .padding(vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    Text(
+                        text = "Initial Balance",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = "Initial Balance",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "$",
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 36.sp,
-                                fontWeight = FontWeight.Black
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            TextField(
-                                value = state.initialBalance,
-                                onValueChange = { viewModel.onBalanceChange(it) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                placeholder = { Text("0.00", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)) },
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent,
-                                    focusedIndicatorColor = Color.Transparent,
-                                    unfocusedIndicatorColor = Color.Transparent,
-                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface
-                                ),
-                                textStyle = LocalTextStyle.current.copy(
-                                    fontSize = 36.sp,
-                                    fontWeight = FontWeight.Black
-                                ),
-                                maxLines = 1,
-                                modifier = Modifier.width(200.dp)
-                            )
+                        val currencySymbol = remember(state.currencyCode) {
+                            when (state.currencyCode.uppercase()) {
+                                "BDT" -> "৳"
+                                "USD" -> "$"
+                                "EUR" -> "€"
+                                "GBP" -> "£"
+                                "INR" -> "₹"
+                                "CAD" -> "C$"
+                                "AUD" -> "A$"
+                                "JPY" -> "¥"
+                                "SAR" -> "SR"
+                                "AED" -> "DH"
+                                else -> "$"
+                            }
                         }
+                        Text(
+                            text = currencySymbol,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 44.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        TextField(
+                            value = state.initialBalance,
+                            onValueChange = { viewModel.onBalanceChange(it) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            placeholder = { Text("0.00", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)) },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            textStyle = LocalTextStyle.current.copy(
+                                fontSize = 44.sp,
+                                fontWeight = FontWeight.Black
+                            ),
+                            maxLines = 1,
+                            modifier = Modifier
+                                .width(220.dp)
+                        )
                     }
                 }
             }
 
-            // 3. Name & Currency Fields Group
+            // 3. Name & Currency Fields Group (Minimalist outlined Card)
             Column(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                     .padding(16.dp)
             ) {
+                // Predefined Recommendation Chips
+                if (state.type == "BANK" || state.type == "MOBILE") {
+                    val recommendations = remember(state.countryCode, state.type) {
+                        PredefinedFinancialInstitutions.getRecommendations(state.countryCode, getMfs = state.type == "MOBILE")
+                    }
+                    if (recommendations.isNotEmpty()) {
+                        Column {
+                            Text(
+                                text = "Recommendations",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(recommendations) { name ->
+                                    SuggestionChip(
+                                        onClick = { viewModel.onNameChange(name) },
+                                        label = { Text(name) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Account Name Input
                 Column {
                     Text("Account Name", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
@@ -207,7 +252,7 @@ fun AddAccountScreen(
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
                             focusedIndicatorColor = MaterialTheme.colorScheme.primary,
-                            unfocusedIndicatorColor = MaterialTheme.colorScheme.outline,
+                            unfocusedIndicatorColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
                             focusedTextColor = MaterialTheme.colorScheme.onSurface,
                             unfocusedTextColor = MaterialTheme.colorScheme.onSurface
                         ),
@@ -220,21 +265,42 @@ fun AddAccountScreen(
                 Column {
                     Text("Currency Code", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
-                    TextField(
-                        value = state.currencyCode,
-                        onValueChange = { viewModel.onCurrencyChange(it.uppercase()) },
-                        placeholder = { Text("USD", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) },
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedIndicatorColor = MaterialTheme.colorScheme.primary,
-                            unfocusedIndicatorColor = MaterialTheme.colorScheme.outline,
-                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                        maxLines = 1
-                    )
+                    var currencyMenuExpanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(
+                        expanded = currencyMenuExpanded,
+                        onExpandedChange = { currencyMenuExpanded = it }
+                    ) {
+                        TextField(
+                            value = AppCurrency.fromCode(state.currencyCode).displayName,
+                            onValueChange = {},
+                            readOnly = true,
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = currencyMenuExpanded) },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                unfocusedIndicatorColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            modifier = Modifier.menuAnchor().fillMaxWidth(),
+                            maxLines = 1
+                        )
+                        ExposedDropdownMenu(
+                            expanded = currencyMenuExpanded,
+                            onDismissRequest = { currencyMenuExpanded = false }
+                        ) {
+                            AppCurrency.values().forEach { appCurrency ->
+                                DropdownMenuItem(
+                                    text = { Text(appCurrency.displayName) },
+                                    onClick = {
+                                        viewModel.onCurrencyChange(appCurrency.code)
+                                        currencyMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

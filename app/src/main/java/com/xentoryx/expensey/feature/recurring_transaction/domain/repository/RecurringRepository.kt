@@ -33,5 +33,7 @@ interface RecurringRepository {
 
     suspend fun deleteRecurringTransaction(id: String): Result<Unit, DataError>
     
+    suspend fun toggleActive(id: String, isActive: Boolean): Result<RecurringTransaction, DataError>
+    
     suspend fun syncRecurringTransactions(): Result<Unit, DataError>
 }

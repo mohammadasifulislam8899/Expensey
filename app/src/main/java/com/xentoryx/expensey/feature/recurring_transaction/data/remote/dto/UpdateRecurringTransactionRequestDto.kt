@@ -11,5 +11,6 @@ data class UpdateRecurringTransactionRequestDto(
     val frequency: String,
     val note: String? = null,
     val startDate: String? = null,
-    val endDate: String? = null
+    val endDate: String? = null,
+    val isActive: Boolean? = null
 )

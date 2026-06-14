@@ -4,6 +4,7 @@ import com.xentoryx.expensey.core.domain.util.DataError
 
 sealed interface VerifyEmailEffect {
     data object NavigateToLogin : VerifyEmailEffect
+    data object NavigateToHome : VerifyEmailEffect
     data class ShowError(val error: DataError) : VerifyEmailEffect
     data class ShowSuccess(val message: String) : VerifyEmailEffect
 }

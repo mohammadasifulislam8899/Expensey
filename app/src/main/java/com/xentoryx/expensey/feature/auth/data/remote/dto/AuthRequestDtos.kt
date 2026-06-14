@@ -45,7 +45,8 @@ data class ResetPasswordRequestDto(
 @Serializable
 data class UpdateProfileRequestDto(
     val fullName: String,
-    val currencyCode: String
+    val currencyCode: String,
+    val countryCode: String? = null
 )
 
 @Serializable

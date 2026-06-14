@@ -26,8 +26,9 @@ import android.widget.Toast
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.ui.platform.LocalContext
 import com.xentoryx.expensey.feature.dashboard.domain.model.AccountSummary
-import com.xentoryx.expensey.feature.dashboard.domain.model.Transaction
+import com.xentoryx.expensey.feature.transaction.presentation.list.TransactionUiModel
 import com.xentoryx.expensey.feature.transaction.presentation.list.TransactionRowItem
+import com.xentoryx.expensey.core.domain.model.AppCurrency
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,10 +50,10 @@ fun AccountDetailScreen(
         viewModel.setAccountId(account.accountId)
     }
 
-    val gradientBrush = when (account.accountType.uppercase(Locale.US)) {
-        "CASH" -> Brush.horizontalGradient(listOf(Color(0xFF00B4DB), Color(0xFF0083B0)))
-        "CARD" -> Brush.horizontalGradient(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)))
-        else -> Brush.horizontalGradient(listOf(Color(0xFF11998e), Color(0xFF38ef7d))) // BANK
+    val typeColor = when (account.accountType.uppercase(Locale.US)) {
+        "CASH" -> Color(0xFF00B4DB)
+        "CARD" -> Color(0xFF8E2DE2)
+        else -> Color(0xFF11998e)
     }
 
     if (showDeleteConfirmation) {
@@ -133,39 +134,56 @@ fun AccountDetailScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Account Card Banner
-            Box(
+            // Account Card Banner (Outlined & Minimalist)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(24.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 12.dp)
-                    .background(gradientBrush, RoundedCornerShape(24.dp))
-                    .padding(24.dp)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp))
             ) {
-                Column {
-                    Text(
-                        text = account.accountType.uppercase(Locale.US),
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.5.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = account.accountName,
-                        color = Color.White,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = account.accountName,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Box(
+                            modifier = Modifier
+                                .background(typeColor.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                                .border(1.dp, typeColor.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = account.accountType.uppercase(Locale.US),
+                                color = typeColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
                     Text(
                         text = "Available Balance",
-                        color = Color.White.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val currencySymbol = remember(account.currencyCode) {
+                        AppCurrency.fromCode(account.currencyCode).symbol
+                    }
                     Text(
-                        text = String.format(Locale.US, "$%,.2f", account.balance),
-                        color = Color.White,
+                        text = String.format(Locale.US, "%s%,.2f", currencySymbol, account.balance),
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Black
                     )
@@ -204,7 +222,7 @@ fun AccountDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(transactions) { transaction ->
-                        TransactionRowItem(transaction = transaction)
+                        TransactionRowItem(transaction = transaction, accounts = listOf(account))
                     }
                     item { Spacer(modifier = Modifier.height(20.dp)) }
                 }

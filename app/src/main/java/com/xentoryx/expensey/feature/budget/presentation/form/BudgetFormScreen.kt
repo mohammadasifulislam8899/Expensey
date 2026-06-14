@@ -25,6 +25,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xentoryx.expensey.feature.budget.domain.model.Budget
+import com.xentoryx.expensey.core.domain.model.AppCurrency
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,58 +92,56 @@ fun BudgetFormScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 1. Amount limit card input
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
+            // 1. Bold Amount Entry (Revolut style)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+                    .padding(vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                Text(
+                    text = "Amount Limit",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "Amount Limit",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "$",
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 36.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        TextField(
-                            value = state.amountLimit,
-                            onValueChange = { viewModel.onAmountChange(it) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            placeholder = { Text("0.00", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)) },
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
-                            ),
-                            textStyle = LocalTextStyle.current.copy(
-                                fontSize = 36.sp,
-                                fontWeight = FontWeight.Black
-                            ),
-                            maxLines = 1,
-                            modifier = Modifier.width(200.dp)
-                        )
+                    val currencySymbol = remember(state.currencyCode) {
+                        AppCurrency.fromCode(state.currencyCode).symbol
                     }
+                    Text(
+                        text = currencySymbol,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 44.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    TextField(
+                        value = state.amountLimit,
+                        onValueChange = { viewModel.onAmountChange(it) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        placeholder = { Text("0.00", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        textStyle = LocalTextStyle.current.copy(
+                            fontSize = 44.sp,
+                            fontWeight = FontWeight.Black
+                        ),
+                        maxLines = 1,
+                        modifier = Modifier.width(220.dp)
+                    )
                 }
             }
 

@@ -43,7 +43,10 @@ import org.koin.compose.koinInject
 @Serializable object AccountsRoute
 @Serializable object BudgetsRoute
 @Serializable object SettingsRoute
-@Serializable data class AddTransactionRoute(val transactionId: String? = null)
+@Serializable data class AddTransactionRoute(
+    val transactionId: String? = null,
+    val transactionType: String? = null
+)
 @Serializable object PdfExportRoute
 
 // ─── Root NavHost ─────────────────────────────────────────────────────────────

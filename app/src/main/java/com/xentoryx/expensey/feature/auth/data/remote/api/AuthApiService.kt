@@ -9,6 +9,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.request.put
+import io.ktor.client.request.delete
 import io.ktor.client.statement.HttpResponse
 
 class AuthApiService(
@@ -84,6 +85,18 @@ class AuthApiService(
 
     suspend fun logout(): HttpResponse {
         return client.post(constructUrl("/auth/logout")) {
+            bearerAuth(tokenManager.getAccessToken() ?: "")
+        }
+    }
+
+    suspend fun deleteAccount(): HttpResponse {
+        return client.delete(constructUrl("/auth/me")) {
+            bearerAuth(tokenManager.getAccessToken() ?: "")
+        }
+    }
+
+    suspend fun resetAllData(): HttpResponse {
+        return client.post(constructUrl("/auth/me/reset")) {
             bearerAuth(tokenManager.getAccessToken() ?: "")
         }
     }

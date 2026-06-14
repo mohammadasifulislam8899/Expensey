@@ -58,7 +58,7 @@ class VerifyEmailViewModel(
                 .onSuccess {
                     _state.update { it.copy(isLoading = false) }
                     _effects.send(VerifyEmailEffect.ShowSuccess("Email verified successfully!"))
-                    _effects.send(VerifyEmailEffect.NavigateToLogin)
+                    _effects.send(VerifyEmailEffect.NavigateToHome)
                 }
                 .onError { error ->
                     _state.update { it.copy(isLoading = false) }

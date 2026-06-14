@@ -8,6 +8,7 @@ data class UserResponseDto(
     val email: String,
     val fullName: String,
     val currencyCode: String,
+    val countryCode: String,
     val isEmailVerified: Boolean,
     val isActive: Boolean
 )

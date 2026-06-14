@@ -1,0 +1,169 @@
+package com.xentoryx.expensey.core.sync
+
+import android.content.Context
+import androidx.work.CoroutineWorker
+import androidx.work.WorkerParameters
+import com.xentoryx.expensey.core.data.database.dao.RecurringTransactionDao
+import com.xentoryx.expensey.core.data.database.entity.RecurringTransactionEntity
+import com.xentoryx.expensey.feature.recurring_transaction.data.remote.api.RecurringApiService
+import com.xentoryx.expensey.feature.recurring_transaction.data.remote.dto.CreateRecurringTransactionRequestDto
+import com.xentoryx.expensey.feature.recurring_transaction.data.remote.dto.UpdateRecurringTransactionRequestDto
+import com.xentoryx.expensey.feature.recurring_transaction.data.remote.dto.RecurringTransactionResponseDto
+import com.xentoryx.expensey.core.data.database.entity.SyncStatus
+import com.xentoryx.expensey.core.data.networking.tryToRefreshToken
+import io.ktor.client.call.body
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
+
+class SyncRecurringTransactionsWorker(
+    context: Context,
+    params: WorkerParameters
+) : CoroutineWorker(context, params), KoinComponent {
+
+    private val recurringDao: RecurringTransactionDao by inject()
+    private val apiService: RecurringApiService by inject()
+
+    override suspend fun doWork(): Result {
+        var allSuccessful = true
+
+        // 1. Process deletions
+        val deletions = try {
+            recurringDao.getUnsyncedDeletions()
+        } catch (e: Exception) {
+            return Result.failure()
+        }
+
+        for (recurring in deletions) {
+            try {
+                if (recurring.isNewLocal) {
+                    // Created and deleted offline, never reached server
+                    recurringDao.deleteRecurringTransactionById(recurring.id)
+                } else {
+                    var response = apiService.deleteRecurringTransaction(recurring.id)
+                    if (response.status.value == 401) {
+                        if (tryToRefreshToken()) {
+                            response = apiService.deleteRecurringTransaction(recurring.id)
+                        }
+                    }
+                    if (response.status.value in 200..299 || response.status.value == 404) {
+                        recurringDao.deleteRecurringTransactionById(recurring.id)
+                    } else {
+                        allSuccessful = false
+                    }
+                }
+            } catch (e: Exception) {
+                allSuccessful = false
+            }
+        }
+
+        // 2. Process insertions and updates
+        val unsynced = try {
+            recurringDao.getUnsyncedRecurringTransactions()
+        } catch (e: Exception) {
+            return Result.failure()
+        }
+
+        for (recurring in unsynced) {
+            try {
+                if (recurring.isNewLocal) {
+                    val request = CreateRecurringTransactionRequestDto(
+                        accountId = recurring.accountId,
+                        categoryId = recurring.categoryId,
+                        amount = recurring.amount,
+                        type = recurring.type,
+                        frequency = recurring.frequency,
+                        note = recurring.note?.ifBlank { null },
+                        startDate = recurring.startDate.ifBlank { null },
+                        endDate = recurring.endDate?.ifBlank { null }
+                    )
+                    var response = apiService.createRecurringTransaction(request)
+                    if (response.status.value == 401) {
+                        if (tryToRefreshToken()) {
+                            response = apiService.createRecurringTransaction(request)
+                        }
+                    }
+                    if (response.status.value in 200..299) {
+                        val responseDto = response.body<RecurringTransactionResponseDto>()
+                        recurringDao.deleteRecurringTransactionById(recurring.id)
+                        recurringDao.insertRecurringTransaction(
+                            RecurringTransactionEntity(
+                                id = responseDto.id,
+                                accountId = responseDto.accountId,
+                                categoryId = responseDto.categoryId,
+                                amount = responseDto.amount,
+                                type = responseDto.type,
+                                frequency = responseDto.frequency,
+                                note = responseDto.note,
+                                startDate = responseDto.startDate,
+                                endDate = responseDto.endDate,
+                                nextRunDate = responseDto.nextRunDate,
+                                isActive = responseDto.isActive,
+                                createdAt = responseDto.createdAt,
+                                syncStatus = SyncStatus.SYNCED,
+                                isNewLocal = false,
+                                isDeleted = false
+                            )
+                        )
+                    } else {
+                        recurringDao.insertRecurringTransaction(recurring.copy(syncStatus = SyncStatus.FAILED))
+                        allSuccessful = false
+                    }
+                } else {
+                    val request = UpdateRecurringTransactionRequestDto(
+                        accountId = recurring.accountId,
+                        categoryId = recurring.categoryId,
+                        amount = recurring.amount,
+                        type = recurring.type,
+                        frequency = recurring.frequency,
+                        note = recurring.note?.ifBlank { null },
+                        startDate = recurring.startDate.ifBlank { null },
+                        endDate = recurring.endDate?.ifBlank { null },
+                        isActive = recurring.isActive
+                    )
+                    var response = apiService.updateRecurringTransaction(recurring.id, request)
+                    if (response.status.value == 401) {
+                        if (tryToRefreshToken()) {
+                            response = apiService.updateRecurringTransaction(recurring.id, request)
+                        }
+                    }
+                    if (response.status.value in 200..299) {
+                        val responseDto = response.body<RecurringTransactionResponseDto>()
+                        recurringDao.insertRecurringTransaction(
+                            RecurringTransactionEntity(
+                                id = responseDto.id,
+                                accountId = responseDto.accountId,
+                                categoryId = responseDto.categoryId,
+                                amount = responseDto.amount,
+                                type = responseDto.type,
+                                frequency = responseDto.frequency,
+                                note = responseDto.note,
+                                startDate = responseDto.startDate,
+                                endDate = responseDto.endDate,
+                                nextRunDate = responseDto.nextRunDate,
+                                isActive = responseDto.isActive,
+                                createdAt = responseDto.createdAt,
+                                syncStatus = SyncStatus.SYNCED,
+                                isNewLocal = false,
+                                isDeleted = false
+                            )
+                        )
+                    } else {
+                        recurringDao.insertRecurringTransaction(recurring.copy(syncStatus = SyncStatus.FAILED))
+                        allSuccessful = false
+                    }
+                }
+            } catch (e: Exception) {
+                try {
+                    recurringDao.insertRecurringTransaction(recurring.copy(syncStatus = SyncStatus.FAILED))
+                } catch (_: Exception) {}
+                allSuccessful = false
+            }
+        }
+
+        return if (allSuccessful) {
+            Result.success()
+        } else {
+            Result.retry()
+        }
+    }
+}

@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xentoryx.expensey.core.domain.util.Result
 import com.xentoryx.expensey.feature.budget.domain.usecase.GetBudgetsUseCase
+import com.xentoryx.expensey.core.storage.TokenManager
+import com.xentoryx.expensey.core.storage.CurrencyConverter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -12,7 +14,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class BudgetsListViewModel(
-    private val getBudgetsUseCase: GetBudgetsUseCase
+    private val getBudgetsUseCase: GetBudgetsUseCase,
+    private val tokenManager: TokenManager,
+    private val currencyConverter: CurrencyConverter
 ) : ViewModel() {
 
     private val _isLoading = MutableStateFlow(false)
@@ -20,13 +24,29 @@ class BudgetsListViewModel(
 
     val state: StateFlow<BudgetsListState> = combine(
         getBudgetsUseCase(),
+        tokenManager.userCurrency,
         _isLoading,
         _errorMessage
-    ) { budgets, isLoading, errorMessage ->
+    ) { budgets, userCurrency, isLoading, errorMessage ->
+        val convertedBudgets = budgets.map { budget ->
+            val limit = currencyConverter.convert(budget.amountLimit, "BDT", userCurrency)
+            val spent = currencyConverter.convert(budget.spent, "BDT", userCurrency)
+            val remaining = limit - spent
+            val percentage = if (limit > 0.0) (spent / limit) * 100.0 else 0.0
+            val isExceeded = spent > limit
+            budget.copy(
+                amountLimit = limit,
+                spent = spent,
+                remaining = remaining,
+                percentage = percentage,
+                isExceeded = isExceeded
+            )
+        }
         BudgetsListState(
-            budgets = budgets,
+            budgets = convertedBudgets,
             isLoading = isLoading,
-            errorMessage = errorMessage
+            errorMessage = errorMessage,
+            currencyCode = userCurrency
         )
     }.stateIn(
         scope = viewModelScope,
