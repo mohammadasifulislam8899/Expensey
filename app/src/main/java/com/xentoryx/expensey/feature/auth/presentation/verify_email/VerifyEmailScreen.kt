@@ -286,6 +286,20 @@ fun VerifyEmailScreen(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    text = "Back to Login",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = CrushLavender,
+                        letterSpacing = 0.1.sp
+                    ),
+                    modifier = Modifier.clickable {
+                        onNavigateToLogin()
+                    }
+                )
+
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
